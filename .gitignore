@@ -1,0 +1,35 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+tests/golden/**/*.csv
+tests/golden/**/*.png
+# macOS
+.DS_Store
+
+# Coverage
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# Python caches
+.mypy_cache/
+
+# MD trajectories and outputs
+*.xtc
+*.trr
+*.tpr
+*.gro
+*.edr
+*.cpt
+*.log

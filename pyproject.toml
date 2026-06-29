@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mechanism"
+version = "0.3.0+m3"
+description = "Reproducibility-gated mechanistic inference from replicate MD (M0: v5-parity foundation)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "numpy>=1.23",
+    "pandas>=1.5",
+    "scipy>=1.9",
+    "matplotlib>=3.6",
+    "MDAnalysis>=2.4",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev  = ["pytest>=7", "pillow>=9"]
+msa  = ["biopython>=1.80"]
+
+[project.scripts]
+mechanism = "mechanism.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mechanism = ["configs/*.yaml", "configs/*.json"]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

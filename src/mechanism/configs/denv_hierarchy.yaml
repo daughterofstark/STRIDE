@@ -1,0 +1,38 @@
+# DENV1-4 NS2B-NS3 protease — biological hierarchy configuration.
+# All family-specific knowledge lives here, NOT in source code.
+# Canonical numbering: NS2B cofactor on negative ids, NS3 protease on positive.
+# Domain boundaries follow the project's canonical (DENV2-referenced) definitions.
+name: DENV
+complex_name: NS2B-NS3
+protein_name: protease
+levels: [complex, protein, chain, domain, motif, secondary_structure, residue]
+
+numbering:
+  scheme: offset      # canonical = file_resid - offset (offset detected at runtime)
+  offset: 0
+
+chains:
+  - {name: NS2B, canonical_range: [-999, 0]}    # cofactor (negative canonical)
+  - {name: NS3,  canonical_range: [1, 9999]}    # protease (positive canonical)
+
+domains:
+  - {name: Catalytic Triad, chain: NS3, residues: [51, 75, 135]}
+  - {name: Gly45 Turn,      chain: NS3, residues: [{range: [43, 50]}]}
+  - {name: B2b-C2 Hairpin,  chain: NS3, residues: [{range: [116, 124]}]}
+  - {name: 120s Loop,       chain: NS3, residues: [{range: [117, 122]}]}
+  - {name: Oxyanion Loop,   chain: NS3, residues: [{range: [152, 159]}]}
+  - {name: C-Terminal Tail, chain: NS3, residues: [{range: [155, 250]}]}
+
+motifs: []   # none defined; the motif level resolves to "none" (still a valid partition)
+
+catalytic_residues:
+  - {canonical: 51,  resname: HIS, role: nucleophile_base}
+  - {canonical: 75,  resname: ASP, role: acid}
+  - {canonical: 135, resname: SER, role: nucleophile}
+
+secondary_structure:
+  method: none   # pluggable; supply method=mapping + assignments to use DSSP/STRIDE output
+
+aliases:
+  protease: NS3
+  cofactor: NS2B

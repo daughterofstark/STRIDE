@@ -1,0 +1,21 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # Pure-stats parity needs only the light core (no MDAnalysis) — fast CI.
+      - run: pip install numpy pandas scipy matplotlib pytest pillow
+      - run: pip install -e . --no-deps
+      - name: Run M0 parity + functional tests (MDAnalysis-free)
+        run: pytest tests/test_stats_parity.py -v
+      # Golden CSV/figure tests skip automatically without MECHANISM_DATA_DIR + fixtures.
+      - name: Run golden tests (skip if no data)
+        run: pytest tests/test_golden_csv.py tests/test_golden_figures.py -v
