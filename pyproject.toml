@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mechanism"
-version = "0.5.0+m5"
+version = "0.6.0+m6"
 description = "Reproducibility-gated mechanistic inference from replicate MD (M0: v5-parity foundation)"
 readme = "README.md"
 requires-python = ">=3.10"

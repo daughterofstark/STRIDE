@@ -15,3 +15,10 @@ class Config:
     no_msa: bool = False                   # skip MSA equivalence
     seed: int = 42                         # global RNG seed
     hierarchy_config: Optional[str] = None # path to a hierarchy YAML/JSON (M3)
+    # M6 — gate settings consumed by the M5 aggregation tail. PROVISIONAL and
+    # UNCALIBRATED: rho_star is a configured constant, not the Part IV calibrated
+    # threshold; emitted mechanisms are marked calibrated=False until the
+    # validation phase. Defaults mirror replicate.GateConfig.
+    rho_star: float = 0.5
+    alpha: float = 0.05
+    coherence_threshold: float = 0.6

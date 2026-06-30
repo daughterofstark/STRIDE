@@ -6,6 +6,11 @@ from .aggregator import (
     gate_profile,
     run_aggregation,
 )
+from .orchestrate import (  # [M6]
+    aggregate_from_rundirs,
+    run_aggregation_tail,
+    gate_config_from,
+)
 
 __all__ = [
     "GateConfig",
@@ -13,4 +18,7 @@ __all__ = [
     "build_profiles",
     "gate_profile",
     "run_aggregation",
+    "aggregate_from_rundirs",
+    "run_aggregation_tail",
+    "gate_config_from",
 ]
