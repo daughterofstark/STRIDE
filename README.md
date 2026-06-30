@@ -49,3 +49,16 @@ scripts/             capture_golden.py
 tests/               parity + golden harness
 ```
 See `MIGRATION_NOTES.md` for exactly what changed and why.
+
+## Validation framework (Phase 2)
+
+The `validation/` directory holds the validation & benchmarking framework
+(milestones V0–V8; see `VALIDATION_ROADMAP.md`). It is **completely separate** from
+the production `mechanism` package: it lives outside the packaged `src/` tree, is not
+part of the installed distribution, and `mechanism` never imports it — deleting
+`validation/` leaves the production framework fully functional. Its tests live under
+`validation/tests/` (outside the production `testpaths`) and run separately:
+
+```bash
+python -m pytest validation/tests
+```
