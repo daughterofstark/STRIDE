@@ -1,9 +1,24 @@
-"""V0 separation guards: prove complete isolation between `validation` and `mechanism`.
+"""Separation guards: prove the controlled isolation between `validation` and
+`mechanism` (V1 boundary — tightened from V0).
 
-These tests enforce the package's central invariant — production has no dependency
-on validation, and (at V0) validation has none on production — by both static
-source scanning and dynamic import accounting.
+At V0 no validation module imported ``mechanism`` at all. V1 opens a **single,
+narrow** edge: the generator round-trips through the production estimator, which
+requires translating a synthetic spec into a production ``HierarchyConfig``. That
+translation is confined to exactly one module, ``validation/adapters.py``, and it
+imports only the **public** hierarchy schema — never underscore-prefixed internals.
+
+These tests enforce, by static source scanning and dynamic import accounting:
+
+* production never imports validation (unchanged from V0);
+* importing ``mechanism`` pulls in no validation module (unchanged from V0);
+* the set of validation non-test modules importing ``mechanism`` is a **subset of
+  {adapters.py}** (tightened: the coupling cannot spread to other modules);
+* any validation import of ``mechanism`` uses only public names (no
+  ``mechanism._something`` or ``from mechanism.x import _y``);
+* ``validation.generate`` in particular is ``mechanism``-free;
+* ``import validation`` does not require ``mechanism`` on the path.
 """
+import ast
 import importlib
 import os
 import pkgutil
@@ -19,6 +34,9 @@ _VALIDATION = os.path.join(_REPO_ROOT, "validation")
 _IMPORTS_VALIDATION = re.compile(r"^\s*(?:import\s+validation\b|from\s+validation\b)", re.M)
 _IMPORTS_MECHANISM = re.compile(r"^\s*(?:import\s+mechanism\b|from\s+mechanism\b)", re.M)
 
+# The whitelist of validation non-test modules allowed to import mechanism.
+_BRIDGE_MODULES = {"adapters.py"}
+
 
 def _py_files(root):
     for dirpath, _dirs, files in os.walk(root):
@@ -29,6 +47,10 @@ def _py_files(root):
                 yield os.path.join(dirpath, f)
 
 
+def _is_test_module(path):
+    return os.path.basename(os.path.dirname(path)) == "tests"
+
+
 # ── static guarantees ────────────────────────────────────────────────────────
 def test_production_source_never_imports_validation():
     offenders = [p for p in _py_files(_MECH)
@@ -36,16 +58,54 @@ def test_production_source_never_imports_validation():
     assert not offenders, f"production imports validation: {offenders}"
 
 
-def test_v0_validation_modules_do_not_import_mechanism():
-    # At V0, no validation module imports mechanism. Tests are exempt (the
-    # separation test below deliberately imports mechanism to inspect it).
+def test_only_the_bridge_module_imports_mechanism():
+    # Every validation non-test module that imports mechanism must be in the
+    # bridge whitelist. This prevents the validation->production coupling from
+    # spreading beyond adapters.py as later milestones grow the package.
     offenders = []
     for p in _py_files(_VALIDATION):
-        if os.path.basename(os.path.dirname(p)) == "tests":
+        if _is_test_module(p):
             continue
         if _IMPORTS_MECHANISM.search(open(p, encoding="utf-8").read()):
-            offenders.append(p)
-    assert not offenders, f"V0 validation modules import mechanism: {offenders}"
+            if os.path.basename(p) not in _BRIDGE_MODULES:
+                offenders.append(p)
+    assert not offenders, (
+        f"only {_BRIDGE_MODULES} may import mechanism; offenders: {offenders}")
+
+
+def test_generate_module_is_mechanism_free():
+    gen = os.path.join(_VALIDATION, "generate.py")
+    assert os.path.exists(gen)
+    assert not _IMPORTS_MECHANISM.search(open(gen, encoding="utf-8").read()), \
+        "validation.generate must not import mechanism (it is the pure generator)"
+
+
+def test_bridge_imports_only_public_mechanism_names():
+    # adapters.py may import mechanism, but only public (non-underscore) names,
+    # and only from the public hierarchy schema. Parse the AST to check both the
+    # module path and every imported symbol.
+    adapters = os.path.join(_VALIDATION, "adapters.py")
+    tree = ast.parse(open(adapters, encoding="utf-8").read())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module \
+                and node.module.startswith("mechanism"):
+            # module path components must all be public
+            for comp in node.module.split("."):
+                assert not comp.startswith("_"), \
+                    f"bridge imports underscore module component: {node.module}"
+            # imported names must be public
+            for alias in node.names:
+                assert not alias.name.startswith("_"), \
+                    f"bridge imports underscore name: {alias.name}"
+            # confine to the documented public schema module
+            assert node.module == "mechanism.config.hierarchy_schema", \
+                (f"bridge must import only mechanism.config.hierarchy_schema, "
+                 f"got {node.module}")
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert not alias.name.startswith("mechanism") or \
+                    "._" not in alias.name, \
+                    f"bridge uses underscore import: {alias.name}"
 
 
 # ── dynamic guarantees ───────────────────────────────────────────────────────
@@ -71,7 +131,9 @@ def test_public_mechanism_api_is_available_for_later_milestones():
 
 
 def test_validation_package_imports_without_mechanism_on_path():
-    # validation must be usable on its own; importing it must not require mechanism.
+    # validation (and its pure generator) must be usable on its own; importing it
+    # must not require mechanism. The adapter is imported lazily, not at package
+    # import, so `import validation` stays production-free.
     saved_path = list(sys.path)
     saved_modules = dict(sys.modules)
     try:
@@ -83,6 +145,7 @@ def test_validation_package_imports_without_mechanism_on_path():
         if _REPO_ROOT not in sys.path:
             sys.path.insert(0, _REPO_ROOT)
         import validation  # noqa: F401  (should succeed with src/ removed)
+        import validation.generate  # noqa: F401  (the pure generator, too)
         assert "mechanism" not in sys.modules
     finally:
         sys.path[:] = saved_path
