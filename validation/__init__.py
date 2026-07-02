@@ -15,6 +15,8 @@ golden-green. See ``VALIDATION_ROADMAP.md`` for the milestone plan (V0-V8).
 Milestones:
 * V0 — isolation, determinism, data contract.
 * V1 — Tier-A field-level generator + the public-API adapter.
+* V3 — closed-form predicted operating characteristics (Part IV): the untuned
+  faithfulness anchor for the later empirical-vs-predicted check (V5).
 * V2 — Tier-B series-level generator (autocorrelated V(t)/d_i(t)) + the §2.1
   effective-N / sampling-noise chain validated end-to-end through the production
   M1/M2 stack, including misspecified-noise stress processes.
@@ -58,8 +60,23 @@ from .processes import (  # [V2] pure autocorrelated-process generators
     coupled_heavy_tailed_pair,
     coupled_slow_mixing_pair,
 )
+from .predicted import (  # [V3] pure closed-form predicted operating characteristics
+    lambda_snr,
+    rho_from_lambda,
+    rho_from_params,
+    lambda_star,
+    n_eff_from_T,
+    sigma2_bar_from_neff,
+    predicted_fpr,
+    predicted_power,
+    predicted_coverage,
+    ScalePrediction,
+    ell_min,
+    over_resolution_bound,
+    predicted_reference_table,
+)
 
-__version__ = "0.3.0+v2"
+__version__ = "0.4.0+v3"
 
 __all__ = [
     "make_rng",
@@ -97,5 +114,19 @@ __all__ = [
     "coupled_ar2_pair",
     "coupled_heavy_tailed_pair",
     "coupled_slow_mixing_pair",
+    # [V3]
+    "lambda_snr",
+    "rho_from_lambda",
+    "rho_from_params",
+    "lambda_star",
+    "n_eff_from_T",
+    "sigma2_bar_from_neff",
+    "predicted_fpr",
+    "predicted_power",
+    "predicted_coverage",
+    "ScalePrediction",
+    "ell_min",
+    "over_resolution_bound",
+    "predicted_reference_table",
     "__version__",
 ]

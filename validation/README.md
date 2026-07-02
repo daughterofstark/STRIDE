@@ -95,7 +95,51 @@ via `bootstrap_correlation`. AR(1) anchors the analytic `tau_int = 1/2 (1+phi)/(
 These are properties of the current implementation, documented without modifying the
 specification or production code.
 
-## Separation boundary (V1/V2, tightened from V0)
+## V3 contents (closed-form predicted operating characteristics)
+
+| Module | Purpose |
+|---|---|
+| `predicted.py` | **pure** closed-form Part IV curves (imports no `mechanism`, no generators, no RNG): `lambda_snr`, `rho_from_lambda`/`rho_from_params`, `lambda_star`, `n_eff_from_T`, `sigma2_bar_from_neff`, `predicted_fpr`, `predicted_power`, `predicted_coverage`, `ell_min`, `over_resolution_bound`, and the `predicted_reference_table` helper |
+| `tests/test_predicted.py` | analytic-property checks only — limits, monotonicities, identities — **no simulation** |
+
+### What V3 is (and is not)
+
+V3 is the **faithfulness anchor** the roadmap describes: the model-predicted
+operating-characteristic curves in closed (Gaussian-approx) form, depending on
+**neither the generators (V1/V2) nor the production estimator**. It exists so the
+predicted reference can be verified against its own analytic limits *before* the
+empirical-vs-predicted comparison (V5) can be tuned to it. V3 performs **no**
+empirical Monte Carlo study and **no** empirical-vs-predicted comparison — those are
+V5, and additionally depend on the calibrated `rho*` (V4). This ordering is the
+roadmap's explicit precedence.
+
+### Closed forms fixed by the spec vs [CHOICE] approximations
+
+The specification fixes several curves in closed form and the rest by properties:
+
+* `rho = lambda/(1+lambda)`, `lambda = beta^2/(tau^2+sigma_bar^2)` — closed **[SPEC]**;
+* `N_eff = T/(2 tau_int)`, `sigma_bar^2 ∝ 1/N_eff` — **[SPEC]** (constant exposed);
+* `FPR = alpha` by null calibration — **[SPEC]** (V4 sets `rho*`);
+* `ell_min` = finest scale with predicted `rho >= rho*` — **[SPEC]** definition;
+* over-resolution `~ exp(-c K g^2)`, `g = rho* - rho_ell^true` — **[SPEC]** up to model `c`.
+
+Power and coverage are **not** uniquely determined by the spec (it fixes only their
+monotonicities and limits), so they use the **simplest defensible** Gaussian
+approximation, marked **[CHOICE]** in the source:
+
+* `predicted_power` models `Theta_bar ~ Normal(beta, (tau^2+sigma_bar^2)/K)` and
+  returns `Pr(|Theta_bar| >= sqrt(lambda_star (tau^2+sigma_bar^2)))` — one normal
+  CDF, no non-central chi-square machinery. Increasing in `beta^2`, `N_eff`, `K`;
+  decreasing in `tau^2`; `->1` as `beta^2 -> inf`.
+* `predicted_coverage(K) = nominal + (1-nominal)/K` — the minimal function that is
+  `>= nominal` (honest, never anticonservative) for all `K` and converges to
+  `nominal` from above as `K -> inf` ("wider-but-honest at small K").
+
+The tests assert only these spec-required properties, never the specific numeric
+values of the approximations. The `rho` formula is **not** duplicated: a test pins
+`rho_from_params` to `validation.types.RegionTruth.rho`.
+
+## Separation boundary (V1/V2/V3, tightened from V0)
 
 At V0 no validation module imported `mechanism`. V1/V2 open exactly one narrow edge:
 only `adapters.py` imports `mechanism`, and only from documented public modules
@@ -103,8 +147,8 @@ only `adapters.py` imports `mechanism`, and only from documented public modules
 `mechanism.statistics` §2.1 functions for Tier-B recovery). The separation tests
 enforce that the set of validation non-test modules importing `mechanism` is a subset
 of `{adapters.py}`, that only public (non-underscore) names are used, and that they
-come only from those two modules; `generate.py` and `processes.py` stay
-`mechanism`-free and `import validation` remains production-free.
+come only from those two modules; `generate.py`, `processes.py`, and `predicted.py`
+stay `mechanism`-free and `import validation` remains production-free.
 
 ## Running the validation tests
 
