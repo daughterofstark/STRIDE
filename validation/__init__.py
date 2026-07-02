@@ -15,6 +15,8 @@ golden-green. See ``VALIDATION_ROADMAP.md`` for the milestone plan (V0-V8).
 Milestones:
 * V0 — isolation, determinism, data contract.
 * V1 — Tier-A field-level generator + the public-API adapter.
+* V4 — empirical rho* calibration via null surrogates (Part V step 11), producing a
+  provenanced rho_star artifact; generator beta=0 draws independently validate it.
 * V3 — closed-form predicted operating characteristics (Part IV): the untuned
   faithfulness anchor for the later empirical-vs-predicted check (V5).
 * V2 — Tier-B series-level generator (autocorrelated V(t)/d_i(t)) + the §2.1
@@ -75,8 +77,25 @@ from .predicted import (  # [V3] pure closed-form predicted operating characteri
     over_resolution_bound,
     predicted_reference_table,
 )
+from .surrogates import (  # [V4] pure null-surrogate generators (no mechanism)
+    permute_replicate_labels,
+    phase_randomize,
+    phase_randomize_pairs,
+    power_spectrum,
+)
+from .calibrate import (  # [V4] surrogate-based rho* calibration (via adapters bridge)
+    CalibrationResult,
+    upper_alpha_quantile,
+    surrogate_null_rho,
+    ensemble_surrogate_null_rho,
+    calibrate_rho_star,
+    generator_null_rho,
+    empirical_fpr,
+    write_rho_star_yaml,
+    load_rho_star_yaml,
+)
 
-__version__ = "0.4.0+v3"
+__version__ = "0.5.0+v4"
 
 __all__ = [
     "make_rng",
@@ -128,5 +147,19 @@ __all__ = [
     "ell_min",
     "over_resolution_bound",
     "predicted_reference_table",
+    # [V4]
+    "permute_replicate_labels",
+    "phase_randomize",
+    "phase_randomize_pairs",
+    "power_spectrum",
+    "CalibrationResult",
+    "upper_alpha_quantile",
+    "surrogate_null_rho",
+    "ensemble_surrogate_null_rho",
+    "calibrate_rho_star",
+    "generator_null_rho",
+    "empirical_fpr",
+    "write_rho_star_yaml",
+    "load_rho_star_yaml",
     "__version__",
 ]

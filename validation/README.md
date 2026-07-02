@@ -139,7 +139,55 @@ The tests assert only these spec-required properties, never the specific numeric
 values of the approximations. The `rho` formula is **not** duplicated: a test pins
 `rho_from_params` to `validation.types.RegionTruth.rho`.
 
-## Separation boundary (V1/V2/V3, tightened from V0)
+## V4 contents (empirical rho* calibration via null surrogates)
+
+| Module | Purpose |
+|---|---|
+| `surrogates.py` | **pure** null-surrogate generators (imports no `mechanism`): `permute_replicate_labels` (field-level; the canonical scheme), `phase_randomize` / `phase_randomize_pairs` (series-level; preserve the power spectrum, hence `tau_int`/`N_eff`), `power_spectrum` |
+| `calibrate.py` | surrogate-based `rho*` calibration reaching production **only** via the `adapters` bridge (lazy import, so `import validation` stays production-free): `calibrate_rho_star` (canonical, ensemble surrogate null), `ensemble_surrogate_null_rho`, `surrogate_null_rho`, `generator_null_rho` (independent validation), `empirical_fpr`, `write_rho_star_yaml` / `load_rho_star_yaml`, `CalibrationResult` |
+| `artifacts/rho_star_DENV_K{3,5,10}.yaml` | provenanced calibrated thresholds (data, not code), keyed by (system, K, T, alpha, B, seed) |
+| `tests/test_surrogates.py`, `tests/test_calibrate.py` | surrogate properties; out-of-sample FPR control on disjoint beta=0 draws; determinism; artifact round-trip |
+
+### Canonical calibration (surrogate-based) — [SPEC Part V step 11]
+
+`rho*(scale) = upper-alpha quantile of rho_hat under B null surrogates`. The null is
+built by drawing an **ensemble** of beta=0 base datasets (from the V1/V2 generators,
+reused), replicate-label-permuting each to destroy cross-replicate reproducibility
+while preserving the sampling-noise budget, and computing `rho_hat` per scale via the
+**production** M4 aggregator (`aggregate_via_production` → `aggregate_reproducibility`).
+No threshold is hard-coded — `rho*` is entirely the surrogate-null quantile.
+
+Generator beta=0 draws are used **only** as an *independent* check that the
+surrogate-calibrated `rho*` controls FPR out-of-sample (on disjoint seeds); they do
+**not** produce the artifact. Surrogate calibration is canonical; generator nulls
+validate it.
+
+### [CALIBRATION RESULT] DENV_NS2B_NS3, alpha=0.05
+
+| K | rho*(residue) | rho*(domain) | rho*(chain) | out-of-sample FPR (domain/chain/residue) |
+|---|---|---|---|---|
+| 3 | 0.533 | 0.777 | 0.862 | 0.043 / 0.048 / 0.042 |
+| 5 | 0.587 | 0.834 | 0.899 | 0.040 / 0.048 / 0.051 |
+| 10 | 0.554 | 0.824 | 0.898 | 0.035 / 0.028 / 0.043 |
+
+All calibrated `rho*` values sit **well above** the provisional 0.5 — direct evidence
+that the folded-energy positivity bias (characterized in V1) makes an un-calibrated
+threshold anticonservative, and that calibration is necessary. Out-of-sample FPR is at
+or below `alpha = 0.05` (small Monte-Carlo slack), confirming the (Cal) guarantee.
+
+### [KNOWN LIMITATION] Single-base surrogate under-coverage
+
+Surrogates of a *single* base dataset capture only that dataset's within-permutation
+variability, which is narrower than the null spread across independent beta=0
+realizations; a `rho*` from one base under-covers (out-of-sample FPR > alpha). This is
+an observed property of the folded-energy estimator (`A_en` depends only on magnitudes,
+which replicate-label permutation preserves). The canonical calibration therefore pools
+surrogates across an **ensemble** of null bases, restoring FPR ≤ alpha. Documented
+honestly; no change to the specification or production. Production remains
+`calibrated: false` — the calibrated `rho*` lives in the validation artifact as data
+and is not wired into production in V4.
+
+## Separation boundary (V1/V2/V3/V4, unchanged from V0's principle)
 
 At V0 no validation module imported `mechanism`. V1/V2 open exactly one narrow edge:
 only `adapters.py` imports `mechanism`, and only from documented public modules
@@ -147,8 +195,10 @@ only `adapters.py` imports `mechanism`, and only from documented public modules
 `mechanism.statistics` §2.1 functions for Tier-B recovery). The separation tests
 enforce that the set of validation non-test modules importing `mechanism` is a subset
 of `{adapters.py}`, that only public (non-underscore) names are used, and that they
-come only from those two modules; `generate.py`, `processes.py`, and `predicted.py`
-stay `mechanism`-free and `import validation` remains production-free.
+come only from those two modules; `generate.py`, `processes.py`, `predicted.py`,
+`surrogates.py`, and `calibrate.py` stay `mechanism`-free (`calibrate.py` reaches
+production only via a lazy `adapters` import) and `import validation` remains
+production-free.
 
 ## Running the validation tests
 

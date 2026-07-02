@@ -37,6 +37,9 @@ from mechanism.statistics import (
     effective_sample_size,
     corrected_standard_error,
     bootstrap_correlation,
+    # [V4] the production reproducibility aggregator (public facade) — the ONLY way
+    # the V4 calibration reaches rho_hat, so calibrate.py never imports mechanism.
+    aggregate_reproducibility,
 )
 
 from .generate import SyntheticSystemSpec
@@ -193,3 +196,22 @@ def recover_frames_from_series(spec, replicates, *, bootstrap: bool = True,
         per_run.append(df)
         records.append(rec)
     return per_run, records
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# V4 production pass-through: rho_hat via the frozen M4 aggregator
+# ═════════════════════════════════════════════════════════════════════════════
+def aggregate_via_production(per_run_dfs, hierarchy_config, *, protein: str = "",
+                             standardize: bool = True):
+    """Compute rho_hat for every region/scale via the production M4 aggregator.
+
+    A thin, read-only pass-through to ``mechanism.statistics.reproducibility.
+    aggregate_reproducibility`` (the public estimator the roadmap names for V4).
+    Kept in the bridge so ``validation.calibrate`` never imports ``mechanism``
+    directly, preserving the ``{adapters.py}`` separation boundary. Returns the
+    production DataFrame unchanged (columns include ``scale_level``, ``scale_index``,
+    ``region_id``, ``label``, ``rho``, ...).
+    """
+    return aggregate_reproducibility(
+        list(per_run_dfs), hierarchy_config, protein=protein,
+        standardize=standardize)

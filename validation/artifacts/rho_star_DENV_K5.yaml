@@ -1,0 +1,36 @@
+n_null:
+  chain: 400
+  complex: 400
+  domain: 800
+  protein: 400
+  residue: 2800
+provenance:
+  B: 400
+  K: 5
+  T: 0
+  alpha: 0.05
+  seed: 1234
+  surrogate: permute_labels
+  system: DENV_NS2B_NS3
+rho_star:
+  chain: 0.8990565447867942
+  complex: 0.8990565447867942
+  domain: 0.8339785537570058
+  protein: 0.8990565447867942
+  residue: 0.5874406689366782
+rho_star_ci:
+  chain:
+  - 0.8916279488623055
+  - 0.9035392047023175
+  complex:
+  - 0.8917846102457784
+  - 0.9035392047023175
+  domain:
+  - 0.8260685677630643
+  - 0.8384547941990347
+  protein:
+  - 0.8918752350710887
+  - 0.9035745239524364
+  residue:
+  - 0.5822703910294901
+  - 0.6130405549355816
