@@ -15,6 +15,9 @@ golden-green. See ``VALIDATION_ROADMAP.md`` for the milestone plan (V0-V8).
 Milestones:
 * V0 — isolation, determinism, data contract.
 * V1 — Tier-A field-level generator + the public-API adapter.
+* V5 — empirical operating characteristics + empirical-vs-predicted check (Part IV):
+  measures FPR/power/coverage/hierarchy-recovery at the calibrated rho* and pairs
+  them with V3's predicted curves; prediction and calibration are fixed references.
 * V4 — empirical rho* calibration via null surrogates (Part V step 11), producing a
   provenanced rho_star artifact; generator beta=0 draws independently validate it.
 * V3 — closed-form predicted operating characteristics (Part IV): the untuned
@@ -94,8 +97,24 @@ from .calibrate import (  # [V4] surrogate-based rho* calibration (via adapters 
     write_rho_star_yaml,
     load_rho_star_yaml,
 )
+from .metrics import (  # [V5] empirical operating characteristics + emp-vs-predicted
+    OperatingPoint,
+    MetricsReport,
+    empirical_crossing_rate,
+    empirical_rho_recovery,
+    empirical_coverage,
+    empirical_hierarchy_recovery,
+    empirical_over_resolution_rate,
+    check_I2_upward_closed,
+    check_I3_standardization_invariance,
+    roc_auc,
+    operating_point,
+    ell_min_grid,
+    write_metrics_report,
+    load_metrics_report,
+)
 
-__version__ = "0.5.0+v4"
+__version__ = "0.6.0+v5"
 
 __all__ = [
     "make_rng",
@@ -161,5 +180,20 @@ __all__ = [
     "empirical_fpr",
     "write_rho_star_yaml",
     "load_rho_star_yaml",
+    # [V5]
+    "OperatingPoint",
+    "MetricsReport",
+    "empirical_crossing_rate",
+    "empirical_rho_recovery",
+    "empirical_coverage",
+    "empirical_hierarchy_recovery",
+    "empirical_over_resolution_rate",
+    "check_I2_upward_closed",
+    "check_I3_standardization_invariance",
+    "roc_auc",
+    "operating_point",
+    "ell_min_grid",
+    "write_metrics_report",
+    "load_metrics_report",
     "__version__",
 ]

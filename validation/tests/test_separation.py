@@ -91,6 +91,7 @@ def test_bridge_imports_only_public_mechanism_names():
     _ALLOWED_MODULES = {
         "mechanism.config.hierarchy_schema",
         "mechanism.statistics",
+        "mechanism.replicate",
     }
     adapters = os.path.join(_VALIDATION, "adapters.py")
     tree = ast.parse(open(adapters, encoding="utf-8").read())

@@ -41,6 +41,9 @@ from mechanism.statistics import (
     # the V4 calibration reaches rho_hat, so calibrate.py never imports mechanism.
     aggregate_reproducibility,
 )
+# [V5] the production M5 gate (public facade) — lets validation.metrics measure
+# ell_hat* at the calibrated rho* through the bridge, never importing mechanism.
+from mechanism.replicate import run_aggregation, GateConfig
 
 from .generate import SyntheticSystemSpec
 
@@ -215,3 +218,29 @@ def aggregate_via_production(per_run_dfs, hierarchy_config, *, protein: str = ""
     return aggregate_reproducibility(
         list(per_run_dfs), hierarchy_config, protein=protein,
         standardize=standardize)
+
+
+def gate_via_production(per_run_dfs, hierarchy_config, *, rho_star: float,
+                        alpha: float = 0.05, coherence_threshold: float = 0.6,
+                        protein: str = ""):
+    """Run the production M5 gate at ``rho_star`` and return mechanisms as dicts.
+
+    A thin, read-only pass-through to ``mechanism.replicate.run_aggregation`` with a
+    ``GateConfig`` carrying the (calibrated) ``rho_star``. Kept in the bridge so
+    ``validation.metrics`` measures ``ell_hat*`` without importing ``mechanism``.
+    Returns a list of plain dicts (region_id, label, scale_level, scale_index, rho,
+    direction, beta_signed) so the pure metrics layer never touches production types.
+    """
+    cfg = GateConfig(rho_star=float(rho_star), alpha=float(alpha),
+                     coherence_threshold=float(coherence_threshold))
+    _prof, mechs, _unresolved, _meta = run_aggregation(
+        list(per_run_dfs), hierarchy_config, cfg, protein=protein)
+    out = []
+    for m in mechs:
+        out.append({
+            "region_id": m.region_id, "label": m.label,
+            "scale_level": m.scale_level, "scale_index": int(m.scale_index),
+            "rho": float(m.rho), "direction": m.direction,
+            "beta_signed": (None if m.beta_signed is None else float(m.beta_signed)),
+        })
+    return out

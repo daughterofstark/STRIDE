@@ -187,7 +187,68 @@ honestly; no change to the specification or production. Production remains
 `calibrated: false` — the calibrated `rho*` lives in the validation artifact as data
 and is not wired into production in V4.
 
-## Separation boundary (V1/V2/V3/V4, unchanged from V0's principle)
+## V5 contents (empirical operating characteristics + empirical-vs-predicted check)
+
+| Module | Purpose |
+|---|---|
+| `metrics.py` | empirical operating-characteristic evaluation, reaching production **only** via the `adapters` bridge (lazy import): `empirical_crossing_rate` (FPR/power), `empirical_rho_recovery` (consistency (C)), `empirical_coverage`, `empirical_hierarchy_recovery` + `empirical_over_resolution_rate`, `check_I2_upward_closed`, `check_I3_standardization_invariance`, `roc_auc`, `operating_point` (pairs empirical with predicted), `ell_min_grid`, `write_metrics_report` / `load_metrics_report`, `OperatingPoint` / `MetricsReport` |
+| `artifacts/metrics_DENV.yaml` | provenanced empirical-vs-predicted table + predicted ℓ_min grid (data, not code) |
+| `tests/test_metrics.py` | framework correctness + determinism (not frozen estimator behavior) |
+
+### Three independent components (roadmap V5)
+
+Prediction (V3) and calibration (V4) are **fixed references** — V5 imports and calls
+them and **never modifies** `predicted.py` or the `rho_star.yaml` artifacts (verified
+byte-identical). Empirical, predicted, and calibrated results **stand independently**;
+disagreements are computed, reported, and explained — never reshaped to agree.
+
+### [EMPIRICAL RESULT] vs [PREDICTION] — DENV_NS2B_NS3, domain scale, at calibrated ρ\*
+
+| K | β² | ρ_true | emp power | pred power | Δ (emp−pred) | emp FPR |
+|---|---|---|---|---|---|---|
+| 3 | 0.09 | 0.692 | 0.173 | 0.263 | −0.090 | 0.053 |
+| 3 | 0.36 | 0.900 | 0.840 | 0.975 | −0.135 | 0.053 |
+| 3 | 1.00 | 0.962 | 0.993 | 1.000 | −0.007 | 0.053 |
+| 5 | 0.09 | 0.692 | 0.267 | 0.049 | +0.218 | 0.040 |
+| 5 | 0.36 | 0.900 | 0.953 | 0.955 | −0.002 | 0.040 |
+| 5 | 1.00 | 0.962 | 1.000 | 1.000 | +0.000 | 0.040 |
+| 10 | 0.09 | 0.692 | 0.367 | 0.018 | +0.349 | 0.047 |
+| 10 | 0.36 | 0.900 | 0.993 | 0.996 | −0.003 | 0.047 |
+| 10 | 1.00 | 0.962 | 1.000 | 1.000 | +0.000 | 0.047 |
+
+**[EMPIRICAL RESULT]** FPR is controlled at the calibrated ρ\* (0.040–0.053 ≤ α=0.05)
+across all K. Empirical and predicted power **agree closely at moderate/high SNR**
+(β²≥0.36, |Δ|≲0.14) and **converge to 1.0** in the high-SNR limit. At **low SNR**
+(β²=0.09) they diverge, and the sign of Δ even flips with K. This low-β gap is a
+**characterization of the current implementation** — the folded-energy ρ̂ inflation
+near the null (documented from V1) makes the empirical gate behave differently from
+the V3 Gaussian-approximation power model there. It is **not** a mathematical
+invariant, is **not** frozen into any test, and neither the prediction nor the
+calibration was adjusted to reduce it.
+
+**[EMPIRICAL RESULT]** Consistency (C): ρ̂ → ρ_true as σ²→0 (e.g. K=10 driver:
+ρ̂ = 0.869 → 0.987 as σ² = 0.2 → 0.01, tracking ρ_true = 0.833 → 0.990).
+
+**[EMPIRICAL RESULT]** Hierarchy recovery at calibrated ρ\* (K=5): at β=0.6 the driver
+gates at the true domain scale (scale accuracy 0.82); at β=1.0 the distributed-carrier
+driver over-resolves to the residue scale (finer than truth in 80/80) — the expected
+behavior when a coherent effect makes individual residues reproducible. Reported, not
+corrected.
+
+**[EMPIRICAL RESULT]** Coverage of the energy-scale β̂ interval is near-nominal
+(0.87–0.93 over K∈{3,5,10,20}, slightly under at small K — consistent with the V2
+observed under-coverage). I2 (upward-closed passable set) holds on every draw; I3
+(standardization invariance) holds to <1e-9 when the effect field and its uncertainty
+are rescaled together.
+
+### [KNOWN LIMITATION]
+
+The empirical-vs-predicted power gap at low SNR reflects the folded-energy ρ̂ behavior
+of the current estimator, which the V3 Gaussian-approximation power model does not
+capture. Both stand as delivered; reconciling them would require methodological work
+outside V5's scope (V5 evaluates the prediction framework, it does not modify it).
+
+## Separation boundary (V1/V2/V3/V4/V5, unchanged from V0's principle)
 
 At V0 no validation module imported `mechanism`. V1/V2 open exactly one narrow edge:
 only `adapters.py` imports `mechanism`, and only from documented public modules
@@ -195,10 +256,11 @@ only `adapters.py` imports `mechanism`, and only from documented public modules
 `mechanism.statistics` §2.1 functions for Tier-B recovery). The separation tests
 enforce that the set of validation non-test modules importing `mechanism` is a subset
 of `{adapters.py}`, that only public (non-underscore) names are used, and that they
-come only from those two modules; `generate.py`, `processes.py`, `predicted.py`,
-`surrogates.py`, and `calibrate.py` stay `mechanism`-free (`calibrate.py` reaches
-production only via a lazy `adapters` import) and `import validation` remains
-production-free.
+come only from those three modules (`mechanism.config.hierarchy_schema`,
+`mechanism.statistics`, `mechanism.replicate`); `generate.py`, `processes.py`,
+`predicted.py`, `surrogates.py`, `calibrate.py`, and `metrics.py` stay `mechanism`-free
+(`calibrate.py` and `metrics.py` reach production only via lazy `adapters` imports) and
+`import validation` remains production-free.
 
 ## Running the validation tests
 
