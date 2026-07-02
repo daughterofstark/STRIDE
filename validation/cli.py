@@ -59,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_sw.add_argument("--n-seeds", type=int, default=1)
     p_sw.add_argument("--n-eval", type=int, default=60)
     p_sw.add_argument("--out", required=True)
+
+    p_rep = sub.add_parser(
+        "report", help="(V8) build publication figures, tables, and the report "
+                       "from the frozen results store")
+    p_rep.add_argument("--out", required=True,
+                       help="output directory for the reproducibility package")
     return parser
 
 
@@ -116,6 +122,15 @@ def _cmd_sweep(args) -> int:
     return 0
 
 
+def _cmd_report(args) -> int:
+    from .report import build_package
+    man = build_package(args.out)
+    print(f"wrote report -> {man['report']}")
+    print(f"  figures: {len(man['figures'])}, tables: {len(man['tables'])}")
+    print(f"  results_digest: {man['results_digest']}")
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -128,6 +143,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return _cmd_calibrate(args)
     if args.command == "sweep":
         return _cmd_sweep(args)
+    if args.command == "report":
+        return _cmd_report(args)
     parser.print_help()
     return 0
 

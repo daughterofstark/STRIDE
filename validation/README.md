@@ -349,7 +349,51 @@ no biological-generality claim. Per-cell empirical values (power, FPR, over-reso
 live in the results store as data, not as repository invariants; the test suite fixes
 only framework correctness and determinism.
 
-## Separation boundary (V1–V7, unchanged from V0's principle)
+## V8 contents (publication: figures, tables, report, reproducibility package)
+
+The **final** milestone: no new mathematics — it reads the **frozen** V7 results store
+and the V4/V5/V6 artifacts and produces publication output. It introduces **no new
+numbers** and modifies no earlier milestone.
+
+| Module | Purpose |
+|---|---|
+| `_artifacts.py` | shared loaders for the frozen stores (sweep results, metrics, method comparison, calibration) |
+| `tables.py` | five manuscript tables (calibration, empirical-vs-predicted, over-resolution, coverage, hierarchy sensitivity), Markdown/CSV |
+| `figures.py` | seven publication figures (calibration curve, empirical-vs-predicted, coverage, ℓ_min heatmap, over-resolution comparison, hierarchy-sensitivity panel, profile schematic) |
+| `report.py` | assembles `VALIDATION_AND_BENCHMARKING.md` and the reproducibility package (`build_package`) |
+| `cli.py` `report` | `python -m validation report --out <dir>` builds the whole package |
+| `artifacts/publication/` | the shipped generated package (report + figures + tables + store copy) |
+| `VALIDATION_AND_BENCHMARKING.md` (repo root) | the canonical report |
+
+### Output categories (kept distinct)
+
+- **Implementation artifacts** (versioned source): `figures.py`, `tables.py`, `report.py`, `_artifacts.py`, the `report` CLI, and their tests.
+- **Manuscript/report artifacts** (generated, human-facing): `VALIDATION_AND_BENCHMARKING.md`, `artifacts/publication/figures/*.png`, `artifacts/publication/tables/*.md`.
+- **Reproducibility artifacts**: the frozen V7 store (`sweep_results.jsonl` + manifest, unchanged), the `results_digest` embedded in the report, and the `build_package` bundle.
+- **Repository-user artifacts**: this README section and the CLI `report` command.
+
+### Frozen-store discipline & documented limitations
+
+V8 reads persisted artifacts only; it never recomputes or extends any store. Two
+roadmap wish-list figures cannot be built from the frozen store, so — per the V8
+mandate — the limitation is **documented** rather than worked around with new data:
+full **ROC/PR curves** need per-item score vectors the store does not persist (the
+over-resolution *summary* is shown instead), and raw production **Π profiles** are not
+in the store (a **schematic from stored ρ\* per scale** is shown, labelled as such).
+
+### [KNOWN LIMITATION] Synthetic ≠ biological generality (VR6)
+
+The report states scope honestly: synthetic ground truth is the correct instrument for
+operating characteristics; biological generality is a separate step and is not claimed.
+
+### Determinism
+
+Figures use a headless backend; report/table text is deterministic; `build_package`
+rebuilds identically from the same frozen store (verified by
+`test_build_package_is_complete_and_deterministic`). Tests validate the data behind
+figures (via tables) rather than pixel-hashing images.
+
+## Separation boundary (V1–V8, unchanged from V0's principle)
 
 At V0 no validation module imported `mechanism`. V1/V2 open exactly one narrow edge:
 only `adapters.py` imports `mechanism`, and only from documented public modules
@@ -360,10 +404,11 @@ of `{adapters.py}`, that only public (non-underscore) names are used, and that t
 come only from those three modules (`mechanism.config.hierarchy_schema`,
 `mechanism.statistics`, `mechanism.replicate`); `generate.py`, `processes.py`,
 `predicted.py`, `surrogates.py`, `calibrate.py`, `metrics.py`, `baselines.py`,
-`stats_tests.py`, `experiments.py`, `systems/`, `cli.py`, and `__main__.py` stay
-`mechanism`-free (`calibrate.py`, `metrics.py`, `baselines.py`, and `experiments.py`
-reach production only via lazy `adapters` imports) and `import validation` remains
-production-free.
+`stats_tests.py`, `experiments.py`, `systems/`, `cli.py`, `__main__.py`, `_artifacts.py`,
+`tables.py`, `figures.py`, and `report.py` stay `mechanism`-free (`calibrate.py`,
+`metrics.py`, `baselines.py`, and `experiments.py` reach production only via lazy
+`adapters` imports; the V8 publication modules read frozen artifacts only) and `import
+validation` remains production-free.
 
 ## Running the validation tests
 

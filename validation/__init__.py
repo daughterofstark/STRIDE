@@ -15,6 +15,8 @@ golden-green. See ``VALIDATION_ROADMAP.md`` for the milestone plan (V0-V8).
 Milestones:
 * V0 — isolation, determinism, data contract.
 * V1 — Tier-A field-level generator + the public-API adapter.
+* V8 — publication: figures, manuscript tables, and the VALIDATION_AND_BENCHMARKING.md
+  report + reproducibility package, all read from the frozen V7 store (no new numbers).
 * V7 — orchestration: sweep runner, deterministic persistence, and a reproducible
   CLI (`python -m validation run/calibrate/sweep`) over >=2 abstract non-DENV systems;
   calibration is load-only inside a sweep. No new mathematics.
@@ -162,8 +164,11 @@ from .experiments import (  # [V7] sweep orchestration + persistence (load-only 
     results_digest,
     build_manifest,
 )
+from . import tables  # [V8] manuscript tables (frozen-artifact readers)
+from . import figures  # [V8] publication figures (frozen-artifact readers)
+from . import report  # [V8] report assembler + reproducibility package
 
-__version__ = "0.8.0+v7"
+__version__ = "0.9.0+v8"
 
 __all__ = [
     "make_rng",
@@ -282,5 +287,9 @@ __all__ = [
     "rho_star_artifact_path",
     "results_digest",
     "build_manifest",
+    # [V8]
+    "tables",
+    "figures",
+    "report",
     "__version__",
 ]

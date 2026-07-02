@@ -88,3 +88,18 @@ def test_python_m_validation_version():
                           capture_output=True, text=True)
     assert proc.returncode == 0
     assert "validation" in (proc.stdout + proc.stderr)
+
+
+# ── V8: report subcommand ────────────────────────────────────────────────────
+def test_cli_has_report_subcommand():
+    parser = build_parser()
+    sub = [a for a in parser._actions if hasattr(a, "choices") and a.choices][0]
+    assert "report" in sub.choices
+
+
+def test_cli_report_builds_package(tmp_path):
+    rc = main(["report", "--out", str(tmp_path / "pkg")])
+    assert rc == 0
+    assert os.path.exists(tmp_path / "pkg" / "VALIDATION_AND_BENCHMARKING.md")
+    assert len(list((tmp_path / "pkg" / "figures").glob("*.png"))) == 7
+    assert len(list((tmp_path / "pkg" / "tables").glob("*.md"))) == 5
