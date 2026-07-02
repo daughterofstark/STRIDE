@@ -15,6 +15,8 @@ golden-green. See ``VALIDATION_ROADMAP.md`` for the milestone plan (V0-V8).
 Milestones:
 * V0 — isolation, determinism, data contract.
 * V1 — Tier-A field-level generator + the public-API adapter.
+* V6 — Part VI baselines + comparative statistical tests: the Part VII demonstration
+  that STRIDE refuses over-resolution single-trajectory/naive practice emit.
 * V5 — empirical operating characteristics + empirical-vs-predicted check (Part IV):
   measures FPR/power/coverage/hierarchy-recovery at the calibrated rho* and pairs
   them with V3's predicted curves; prediction and calibration are fixed references.
@@ -113,8 +115,33 @@ from .metrics import (  # [V5] empirical operating characteristics + emp-vs-pred
     write_metrics_report,
     load_metrics_report,
 )
+from .baselines import (  # [V6] Part VI baselines + comparison pipeline (pure)
+    SingleTrajClaim,
+    NaiveEnsembleClaim,
+    single_trajectory_claim,
+    single_trajectory_over_resolves,
+    naive_ensemble_claim,
+    naive_ensemble_over_resolves,
+    naive_coverage,
+    residue_ranking_claim,
+    gtheory_coefficient,
+    baseline_over_resolution_rates,
+    build_method_comparison,
+)
+from .stats_tests import (  # [V6] paired comparative statistical tests (pure)
+    McNemarResult,
+    WilcoxonResult,
+    DeLongResult,
+    PairedBootstrapResult,
+    BHResult,
+    mcnemar_test,
+    wilcoxon_signed_rank,
+    delong_auc_test,
+    paired_bootstrap_diff,
+    benjamini_hochberg,
+)
 
-__version__ = "0.6.0+v5"
+__version__ = "0.7.0+v6"
 
 __all__ = [
     "make_rng",
@@ -195,5 +222,27 @@ __all__ = [
     "ell_min_grid",
     "write_metrics_report",
     "load_metrics_report",
+    # [V6]
+    "SingleTrajClaim",
+    "NaiveEnsembleClaim",
+    "single_trajectory_claim",
+    "single_trajectory_over_resolves",
+    "naive_ensemble_claim",
+    "naive_ensemble_over_resolves",
+    "naive_coverage",
+    "residue_ranking_claim",
+    "gtheory_coefficient",
+    "baseline_over_resolution_rates",
+    "build_method_comparison",
+    "McNemarResult",
+    "WilcoxonResult",
+    "DeLongResult",
+    "PairedBootstrapResult",
+    "BHResult",
+    "mcnemar_test",
+    "wilcoxon_signed_rank",
+    "delong_auc_test",
+    "paired_bootstrap_diff",
+    "benjamini_hochberg",
     "__version__",
 ]

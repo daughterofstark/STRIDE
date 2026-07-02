@@ -248,7 +248,61 @@ of the current estimator, which the V3 Gaussian-approximation power model does n
 capture. Both stand as delivered; reconciling them would require methodological work
 outside V5's scope (V5 evaluates the prediction framework, it does not modify it).
 
-## Separation boundary (V1/V2/V3/V4/V5, unchanged from V0's principle)
+## V6 contents (Part VI baselines + comparative statistical tests)
+
+**Roadmap note.** The V6 milestone in `VALIDATION_ROADMAP.md` is **"Baselines +
+comparative statistical tests"** (Part VI baselines, paired tests, and the Part VII
+over-resolution consequence) — *not* a robustness/sensitivity sweep (no such milestone
+exists in the roadmap; the hierarchy-sensitivity sweep is deferred to V7). V6
+implements the roadmap's V6.
+
+| Module | Purpose |
+|---|---|
+| `baselines.py` | **pure** Part VI baselines on the same per-run frames: `single_trajectory_claim` (argmax\|θ⁽¹⁾\|, always residue-scale), `naive_ensemble_claim` (mean±SD/√K at ℓ=0), `residue_ranking_claim` (IDR's which-items core), `gtheory_coefficient` (fixed-resolution reliability), plus over-resolution predicates and the `build_method_comparison` pipeline (reaches STRIDE only via the `adapters` bridge, lazily) |
+| `stats_tests.py` | **pure** paired tests: `mcnemar_test`, `wilcoxon_signed_rank`, `delong_auc_test`, `paired_bootstrap_diff`, `benjamini_hochberg` |
+| `artifacts/method_comparison_DENV.yaml` | method-comparison table + pre-registered per-claim test statistics/p-values |
+| `tests/test_baselines.py`, `tests/test_stats_tests.py` | baseline degeneracies + comparison-framework correctness + determinism |
+
+### [CHOICE] Optional baseline: G-theory implemented, IDR deferred
+
+The roadmap marks IDR and G-theory as optional. **G-theory is implemented**: it is a
+closed-form reliability ratio `var_obj / (var_obj + var_resid/K)` over the same
+variance components STRIDE already uses — a few lines, no new dependencies, and
+structurally a fixed-resolution special case of ρ. **IDR is deferred**: it requires a
+two-component **copula-mixture EM** over ranked replicate pairs (substantial new
+machinery, classically two-replicate, answering an orthogonal "which items" question).
+IDR is represented in the comparison by `residue_ranking_claim` (its fixed-resolution
+which-items core) and documented as the named closest relative; the full EM is
+out-of-scope for V6.
+
+### [ROBUSTNESS RESULT] Part VII consequence — over-resolution on planted nulls
+
+STRIDE gated at the calibrated ρ\* (V4) vs the baselines, true scale = domain:
+
+| K | STRIDE | single-trajectory | naive SD/√K | McNemar p (single / naive) |
+|---|---|---|---|---|
+| 3 | 0.000 | 1.000 | 0.727 | 4.7e-34 / 4.4e-25 |
+| 5 | 0.000 | 1.000 | 0.533 | 4.7e-34 / 1.0e-18 |
+| 10 | 0.000 | 1.000 | 0.480 | 4.7e-34 / 5.9e-17 |
+
+STRIDE **refuses** the over-resolution both baselines emit; all six comparisons survive
+Benjamini–Hochberg at α=0.05. This is the Part VII demonstration ("correctly refusing
+over-resolved claims that single-trajectory practice would emit").
+
+### [ROBUSTNESS RESULT] Part IV coverage bullet — naive SD/√K under-coverage
+
+Naive SD/√K interval coverage: 0.798 (K=3), 0.889 (K=5), 0.931 (K=10) — anticonservative
+at small K, improving with K, vs STRIDE's honest hierarchical interval (V5).
+
+**Independence & test scope.** These robustness/empirical results live in the generated
+artifact and this report. Per the V6 mandate, **no test encodes STRIDE's empirical
+superiority over any baseline as a repository invariant** — the test suite verifies only
+the correctness and determinism of the baselines, the statistical tests, and the
+comparison pipeline. Production, prediction (V3), calibration (V4), empirical evaluation
+(V5), and baseline comparison (V6) remain independent components; V6 modifies none of
+the earlier ones (verified byte-identical).
+
+## Separation boundary (V1–V6, unchanged from V0's principle)
 
 At V0 no validation module imported `mechanism`. V1/V2 open exactly one narrow edge:
 only `adapters.py` imports `mechanism`, and only from documented public modules
@@ -258,9 +312,10 @@ enforce that the set of validation non-test modules importing `mechanism` is a s
 of `{adapters.py}`, that only public (non-underscore) names are used, and that they
 come only from those three modules (`mechanism.config.hierarchy_schema`,
 `mechanism.statistics`, `mechanism.replicate`); `generate.py`, `processes.py`,
-`predicted.py`, `surrogates.py`, `calibrate.py`, and `metrics.py` stay `mechanism`-free
-(`calibrate.py` and `metrics.py` reach production only via lazy `adapters` imports) and
-`import validation` remains production-free.
+`predicted.py`, `surrogates.py`, `calibrate.py`, `metrics.py`, `baselines.py`, and
+`stats_tests.py` stay `mechanism`-free (`calibrate.py`, `metrics.py`, and
+`baselines.py` reach production only via lazy `adapters` imports) and `import
+validation` remains production-free.
 
 ## Running the validation tests
 

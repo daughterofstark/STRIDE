@@ -1,0 +1,108 @@
+benjamini_hochberg:
+  claims:
+  - K3:single_trajectory
+  - K3:naive_ensemble
+  - K5:single_trajectory
+  - K5:naive_ensemble
+  - K10:single_trajectory
+  - K10:naive_ensemble
+  n_rejected: 6
+  pvals:
+  - 4.727960179905761e-34
+  - 4.43113347413895e-25
+  - 4.727960179905761e-34
+  - 1.0239055314954176e-18
+  - 4.727960179905761e-34
+  - 5.888836294943992e-17
+  rejected:
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  threshold: 5.888836294943992e-17
+comparisons_by_K:
+  3:
+    comparisons:
+      naive_ensemble:
+        baseline_rate: 0.7266666666666667
+        mcnemar_b: 0
+        mcnemar_c: 109
+        mcnemar_p: 4.43113347413895e-25
+        mcnemar_statistic: 107.0091743119266
+        paired_bootstrap_ci:
+        - -0.8
+        - -0.6533333333333333
+        paired_bootstrap_diff: -0.7266666666666667
+      single_trajectory:
+        baseline_rate: 1.0
+        mcnemar_b: 0
+        mcnemar_c: 150
+        mcnemar_p: 4.727960179905761e-34
+        mcnemar_statistic: 148.00666666666666
+        paired_bootstrap_ci:
+        - -1.0
+        - -1.0
+        paired_bootstrap_diff: -1.0
+    rho_star_domain: 0.7768826054410536
+    stride_over_resolution_rate: 0.0
+  5:
+    comparisons:
+      naive_ensemble:
+        baseline_rate: 0.5333333333333333
+        mcnemar_b: 0
+        mcnemar_c: 80
+        mcnemar_p: 1.0239055314954176e-18
+        mcnemar_statistic: 78.0125
+        paired_bootstrap_ci:
+        - -0.6068333333333331
+        - -0.4533333333333333
+        paired_bootstrap_diff: -0.5333333333333333
+      single_trajectory:
+        baseline_rate: 1.0
+        mcnemar_b: 0
+        mcnemar_c: 150
+        mcnemar_p: 4.727960179905761e-34
+        mcnemar_statistic: 148.00666666666666
+        paired_bootstrap_ci:
+        - -1.0
+        - -1.0
+        paired_bootstrap_diff: -1.0
+    rho_star_domain: 0.8339785537570058
+    stride_over_resolution_rate: 0.0
+  10:
+    comparisons:
+      naive_ensemble:
+        baseline_rate: 0.48
+        mcnemar_b: 0
+        mcnemar_c: 72
+        mcnemar_p: 5.888836294943992e-17
+        mcnemar_statistic: 70.01388888888889
+        paired_bootstrap_ci:
+        - -0.56
+        - -0.4
+        paired_bootstrap_diff: -0.48
+      single_trajectory:
+        baseline_rate: 1.0
+        mcnemar_b: 0
+        mcnemar_c: 150
+        mcnemar_p: 4.727960179905761e-34
+        mcnemar_statistic: 148.00666666666666
+        paired_bootstrap_ci:
+        - -1.0
+        - -1.0
+        paired_bootstrap_diff: -1.0
+    rho_star_domain: 0.8240071701325693
+    stride_over_resolution_rate: 0.0
+naive_coverage_by_K:
+  3: 0.7977777777777778
+  5: 0.8888888888888888
+  10: 0.9311111111111111
+provenance:
+  alpha: 0.05
+  note: 'Part VII over-resolution comparison on planted nulls (true scale=domain).
+    STRIDE gated at calibrated rho* (V4). Baselines: single-trajectory argmax, naive
+    ensemble SD/sqrt(K). Optional baseline: G-theory implemented; IDR deferred.'
+  seed: 9999
+  system: DENV_NS2B_NS3
