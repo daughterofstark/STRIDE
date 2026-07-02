@@ -302,7 +302,54 @@ comparison pipeline. Production, prediction (V3), calibration (V4), empirical ev
 (V5), and baseline comparison (V6) remain independent components; V6 modifies none of
 the earlier ones (verified byte-identical).
 
-## Separation boundary (V1–V6, unchanged from V0's principle)
+## V7 contents (orchestration, sweep runner, persistence, CLI, reproducibility)
+
+The final **engineering** milestone: no new mathematics — it *orchestrates* V1–V6 over
+a grid, persists results deterministically, and exposes a reproducible CLI. No figures,
+no report (those are V8).
+
+| Module | Purpose |
+|---|---|
+| `systems/__init__.py` | **abstract** synthetic systems named by *hierarchy topology* (not biology): `DENV_NS2B_NS3` (anchor) plus two non-DENV systems with distinct hierarchies — `two_level_single_chain` (1 chain, 3 domains, domain-scale driver) and `three_level_two_chain` (2 chains, 4 domains, chain-scale driver). Pure factories over the V1 generator API |
+| `experiments.py` | `sweep_grid`, `run_cell`/`run_sweep` (orchestrate V4 ρ\*, V5 metrics, gate), `hierarchy_sensitivity` (R6), `ResultStore` (JSONL + manifest), `results_digest`, `build_manifest`. Reaches production only via the lazy `adapters` bridge |
+| `cli.py` + `__main__.py` | `python -m validation run/calibrate/sweep`, deterministic; sweep/run are **load-only** for calibration |
+| `artifacts/sweep_results.jsonl` (+ `_manifest.json`) | the machine-readable results store with provenance |
+| `artifacts/rho_star_{two_level_single_chain,three_level_two_chain}_K{3,5,10}.yaml` | calibration artifacts for the new systems, produced by the **explicit** V4 calibrate step and shipped for load-only sweeps |
+| `tests/test_systems.py`, `test_experiments.py`, `test_cli.py` | framework correctness, determinism, load-only calibration, store round-trip, ≥2-non-DENV coverage |
+
+### [CHOICE] Abstract, topology-named systems
+
+The two non-DENV systems are named for their hierarchy shape, not any biological
+entity. V7 is an engineering milestone and the specification names no particular
+proteins beyond DENV; inventing biologically named systems would imply realism the
+method does not claim. Their sole purpose is to exercise **distinct hierarchy
+topologies** (single- vs two-chain; domain- vs chain-scale driver).
+
+### [CHOICE] Calibration is load-only inside a sweep
+
+A sweep **loads** calibrated ρ\* artifacts; a missing artifact raises
+`CalibrationMissingError` with an actionable message (run `python -m validation
+calibrate …` first). Sweeps never calibrate on the fly, so V4 (calibration) and V7
+(orchestration) stay cleanly separated and every sweep is fully reproducible. The DENV
+system maps to the existing `rho_star_DENV_K*.yaml` artifacts via a `calibration_key`,
+so no prior artifact is renamed.
+
+### Reproducibility
+
+`sweep_grid` is deterministically ordered; `run_cell` derives disjoint null/driver
+seed streams from the cell seed; `ResultStore` serializes with sorted keys. Re-running
+the same sweep yields a **byte-identical** store (verified by
+`test_cli_sweep_rerun_is_byte_identical` and `results_digest`).
+
+### [KNOWN LIMITATION] Synthetic ≠ biological generality (VR6)
+
+Synthetic ground truth is the correct instrument for operating characteristics (ℓ\* is
+unknowable on real data); biological generality is a further, separate step. V7 makes
+no biological-generality claim. Per-cell empirical values (power, FPR, over-resolution)
+live in the results store as data, not as repository invariants; the test suite fixes
+only framework correctness and determinism.
+
+## Separation boundary (V1–V7, unchanged from V0's principle)
 
 At V0 no validation module imported `mechanism`. V1/V2 open exactly one narrow edge:
 only `adapters.py` imports `mechanism`, and only from documented public modules
@@ -312,10 +359,11 @@ enforce that the set of validation non-test modules importing `mechanism` is a s
 of `{adapters.py}`, that only public (non-underscore) names are used, and that they
 come only from those three modules (`mechanism.config.hierarchy_schema`,
 `mechanism.statistics`, `mechanism.replicate`); `generate.py`, `processes.py`,
-`predicted.py`, `surrogates.py`, `calibrate.py`, `metrics.py`, `baselines.py`, and
-`stats_tests.py` stay `mechanism`-free (`calibrate.py`, `metrics.py`, and
-`baselines.py` reach production only via lazy `adapters` imports) and `import
-validation` remains production-free.
+`predicted.py`, `surrogates.py`, `calibrate.py`, `metrics.py`, `baselines.py`,
+`stats_tests.py`, `experiments.py`, `systems/`, `cli.py`, and `__main__.py` stay
+`mechanism`-free (`calibrate.py`, `metrics.py`, `baselines.py`, and `experiments.py`
+reach production only via lazy `adapters` imports) and `import validation` remains
+production-free.
 
 ## Running the validation tests
 

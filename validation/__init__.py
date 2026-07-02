@@ -15,6 +15,9 @@ golden-green. See ``VALIDATION_ROADMAP.md`` for the milestone plan (V0-V8).
 Milestones:
 * V0 — isolation, determinism, data contract.
 * V1 — Tier-A field-level generator + the public-API adapter.
+* V7 — orchestration: sweep runner, deterministic persistence, and a reproducible
+  CLI (`python -m validation run/calibrate/sweep`) over >=2 abstract non-DENV systems;
+  calibration is load-only inside a sweep. No new mathematics.
 * V6 — Part VI baselines + comparative statistical tests: the Part VII demonstration
   that STRIDE refuses over-resolution single-trajectory/naive practice emit.
 * V5 — empirical operating characteristics + empirical-vs-predicted check (Part IV):
@@ -140,8 +143,27 @@ from .stats_tests import (  # [V6] paired comparative statistical tests (pure)
     paired_bootstrap_diff,
     benjamini_hochberg,
 )
+from .systems import (  # [V7] abstract topology-named synthetic systems
+    SystemDef,
+    SYSTEMS,
+    get_system,
+    non_denv_systems,
+)
+from .experiments import (  # [V7] sweep orchestration + persistence (load-only calib)
+    CalibrationMissingError,
+    CellRecord,
+    ResultStore,
+    sweep_grid,
+    run_cell,
+    run_sweep,
+    hierarchy_sensitivity,
+    load_calibrated_rho_star,
+    rho_star_artifact_path,
+    results_digest,
+    build_manifest,
+)
 
-__version__ = "0.7.0+v6"
+__version__ = "0.8.0+v7"
 
 __all__ = [
     "make_rng",
@@ -244,5 +266,21 @@ __all__ = [
     "delong_auc_test",
     "paired_bootstrap_diff",
     "benjamini_hochberg",
+    # [V7]
+    "SystemDef",
+    "SYSTEMS",
+    "get_system",
+    "non_denv_systems",
+    "CalibrationMissingError",
+    "CellRecord",
+    "ResultStore",
+    "sweep_grid",
+    "run_cell",
+    "run_sweep",
+    "hierarchy_sensitivity",
+    "load_calibrated_rho_star",
+    "rho_star_artifact_path",
+    "results_digest",
+    "build_manifest",
     "__version__",
 ]

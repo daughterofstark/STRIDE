@@ -1,0 +1,16 @@
+{
+  "n_cells": 27,
+  "n_eval": 50,
+  "n_non_denv_systems": 2,
+  "non_denv_systems": [
+    "three_level_two_chain",
+    "two_level_single_chain"
+  ],
+  "seed": 0,
+  "systems": [
+    "DENV_NS2B_NS3",
+    "three_level_two_chain",
+    "two_level_single_chain"
+  ],
+  "validation_version": "0.8.0+v7"
+}

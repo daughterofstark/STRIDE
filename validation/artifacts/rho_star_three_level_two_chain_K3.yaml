@@ -1,0 +1,31 @@
+n_null:
+  chain: 800
+  complex: 400
+  domain: 1600
+  residue: 4800
+provenance:
+  B: 400
+  K: 3
+  T: 0
+  alpha: 0.05
+  seed: 1234
+  surrogate: permute_labels
+  system: three_level_two_chain
+rho_star:
+  chain: 0.8503835858130051
+  complex: 0.9109817004775175
+  domain: 0.7530384491101344
+  residue: 0.5330832985954146
+rho_star_ci:
+  chain:
+  - 0.8437482719796279
+  - 0.8550758506377792
+  complex:
+  - 0.908635668906372
+  - 0.9136019202460092
+  domain:
+  - 0.7481784791069724
+  - 0.7569207911069292
+  residue:
+  - 0.5320614223871298
+  - 0.5489474925824342
