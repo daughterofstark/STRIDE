@@ -6,21 +6,27 @@ This package is **completely separate** from the production ``mechanism`` packag
   ``mechanism`` distribution;
 * it imports ``mechanism`` only through its documented public API, and only from a
   single bridge module (``validation.adapters``); every other non-test module
-  (notably ``validation.generate``) is ``mechanism``-free;
+  (notably ``validation.generate`` and ``validation.processes``) is ``mechanism``-free;
 * ``mechanism`` never imports this package.
 
 Deleting this directory leaves the production framework (M0-M6) fully functional and
 golden-green. See ``VALIDATION_ROADMAP.md`` for the milestone plan (V0-V8).
 
-Milestone V1 adds the Tier-A field-level ground-truth generator and the single
-public-API adapter. Note the ``__init__`` intentionally does **not** import
-``validation.adapters`` at package import time (that would pull ``mechanism`` into
-every ``import validation``); the adapter is imported explicitly where needed. This
-keeps ``import validation`` production-free, as the V0 separation guarantee requires.
+Milestones:
+* V0 — isolation, determinism, data contract.
+* V1 — Tier-A field-level generator + the public-API adapter.
+* V2 — Tier-B series-level generator (autocorrelated V(t)/d_i(t)) + the §2.1
+  effective-N / sampling-noise chain validated end-to-end through the production
+  M1/M2 stack, including misspecified-noise stress processes.
+
+The ``__init__`` intentionally does **not** import ``validation.adapters`` at package
+import time (that would pull ``mechanism`` into every ``import validation``); the
+adapter is imported explicitly where needed. This keeps ``import validation``
+production-free, as the V0 separation guarantee requires.
 """
 from ._seed import make_rng, spawn_seeds
 from .types import RegionTruth, GroundTruthSystem, SimResult, SweepCell
-from .generate import (  # [V1] pure generator (imports no mechanism)
+from .generate import (  # [V1] pure Tier-A generator (imports no mechanism)
     SynChain,
     SynDomain,
     Driver,
@@ -31,9 +37,29 @@ from .generate import (  # [V1] pure generator (imports no mechanism)
     build_per_run_frame,
     region_path,
     frames_digest,
+    # [V2] pure Tier-B series orchestration (imports no mechanism)
+    SeriesResidueSpec,
+    TierBSystemSpec,
+    TierBReplicateSeries,
+    generate_series_replicates,
+    series_digest,
+)
+from .processes import (  # [V2] pure autocorrelated-process generators
+    ar1_tau_int,
+    ou_phi,
+    ar1_series,
+    ar2_series,
+    gaussian_innovations,
+    student_t_innovations,
+    SeriesPair,
+    coupled_ar1_pair,
+    coupled_ou_pair,
+    coupled_ar2_pair,
+    coupled_heavy_tailed_pair,
+    coupled_slow_mixing_pair,
 )
 
-__version__ = "0.2.0+v1"
+__version__ = "0.3.0+v2"
 
 __all__ = [
     "make_rng",
@@ -53,5 +79,23 @@ __all__ = [
     "build_per_run_frame",
     "region_path",
     "frames_digest",
+    # [V2]
+    "SeriesResidueSpec",
+    "TierBSystemSpec",
+    "TierBReplicateSeries",
+    "generate_series_replicates",
+    "series_digest",
+    "ar1_tau_int",
+    "ou_phi",
+    "ar1_series",
+    "ar2_series",
+    "gaussian_innovations",
+    "student_t_innovations",
+    "SeriesPair",
+    "coupled_ar1_pair",
+    "coupled_ou_pair",
+    "coupled_ar2_pair",
+    "coupled_heavy_tailed_pair",
+    "coupled_slow_mixing_pair",
     "__version__",
 ]

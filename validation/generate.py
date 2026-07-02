@@ -546,3 +546,209 @@ def frames_digest(gen: GeneratedSystem) -> str:
         ordered = df[_PROD_COLUMNS]
         h.update(ordered.to_csv(index=False, float_format="%.12g").encode("utf-8"))
     return h.hexdigest()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Tier B (V2): series-level generation
+# ═════════════════════════════════════════════════════════════════════════════
+# Tier B synthesises the *time series* V(t) and d_i(t) (via validation.processes,
+# pure) and recovers the effect field theta_i = r(V, d_i), the effective sample
+# size, and the sampling variance THROUGH the production M1/M2 stack — validating
+# the §2.1 chain end-to-end rather than planting theta directly (that is Tier A).
+#
+# The pure part lives here (the spec, the per-residue coupling recipe, and the
+# raw-series orchestration). The single step that must call ``mechanism`` (running
+# the series through the production correlation / effective-N / bootstrap) lives in
+# ``validation.adapters`` — the one designated production bridge — so the
+# separation boundary stays at {adapters.py}. [CHOICE: keep the mechanism-touching
+# recovery in the bridge; keep series synthesis pure]
+
+@dataclass(frozen=True)
+class SeriesResidueSpec:
+    """One residue's coupling recipe for a Tier-B system.
+
+    Attributes
+    ----------
+    canonical : int
+        Canonical residue id (maps to the hierarchy the same way Tier A does).
+    target_r : float
+        Planted Pearson correlation between this residue's ``d_i(t)`` and the
+        shared reference ``V(t)`` (the mechanistic effect ``theta_i``).
+    process : str
+        ``"ar1"`` | ``"ou"`` | ``"ar2"`` | ``"heavy_tailed"`` | ``"slow_mixing"``.
+    phi : float
+        AR(1) parameter (raw-series autocorrelation) for ar1/heavy_tailed/slow_mixing.
+    theta_ou, dt : float
+        OU parameters (used when ``process == "ou"``).
+    a1, a2 : float
+        AR(2) coefficients (used when ``process == "ar2"``).
+    df : float
+        Student-t degrees of freedom (used when ``process == "heavy_tailed"``).
+    """
+
+    canonical: int
+    target_r: float
+    process: str = "ar1"
+    phi: float = 0.7
+    theta_ou: float = 0.2
+    dt: float = 1.0
+    a1: float = 0.6
+    a2: float = 0.3
+    df: float = 3.0
+
+
+@dataclass(frozen=True)
+class TierBSystemSpec:
+    """Recipe for a Tier-B (series-level) synthetic system.
+
+    Every residue gets its own ``d_i(t)`` coupled to a **shared** reference
+    ``V(t)`` at the planted ``target_r``. ``V(t)`` is generated once per replicate
+    with its own AR(1) autocorrelation; each ``d_i`` is coupled to it.
+    """
+
+    name: str
+    levels: tuple[str, ...]
+    chains: tuple[SynChain, ...]
+    domains: tuple[SynDomain, ...]
+    residues: tuple[SeriesResidueSpec, ...]
+    K: int = 3
+    T: int = 2000
+    v_phi: float = 0.7           # autocorrelation of the shared reference V(t)
+    offset: int = 0
+    seed: int = 0
+    resnames: tuple[str, ...] = ()
+
+    @property
+    def canonical_ids(self) -> tuple:
+        return tuple(r.canonical for r in self.residues)
+
+
+@dataclass(frozen=True)
+class TierBReplicateSeries:
+    """The raw series for one replicate of a Tier-B system (pre-recovery)."""
+
+    V: object                    # numpy.ndarray, shape (T,)
+    d_by_canon: dict             # canonical id -> numpy.ndarray, shape (T,)
+    tau_int_v_analytic: float    # analytic raw-series tau_int of V (nan if N/A)
+
+
+def generate_series_replicates(spec: TierBSystemSpec) -> list:
+    """Generate the raw ``V(t)`` and ``d_i(t)`` series for every replicate (pure).
+
+    Returns a list (length ``K``) of :class:`TierBReplicateSeries`. Deterministic
+    in ``spec.seed``. Imports no ``mechanism``: this is pure series synthesis; the
+    production recovery of ``theta`` / ``N_eff`` / ``sigma^2`` happens in the
+    adapter.
+    """
+    from .processes import (
+        ar1_series, ar1_tau_int, coupled_ar1_pair, coupled_ou_pair,
+        coupled_ar2_pair, coupled_heavy_tailed_pair, coupled_slow_mixing_pair,
+    )
+
+    _validate_tierb_spec(spec)
+    rep_seeds = spawn_seeds(spec.seed, spec.K)
+    out = []
+    for k in range(spec.K):
+        rk = make_rng(rep_seeds[k])
+        # per-replicate child seeds: one for V, one per residue
+        child = spawn_seeds(int(rk.integers(0, 2 ** 31 - 1)),
+                            1 + len(spec.residues))
+        v_rng = make_rng(child[0])
+        V = ar1_series(spec.T, spec.v_phi, v_rng)
+        d_by_canon = {}
+        for j, rspec in enumerate(spec.residues):
+            prng = make_rng(child[1 + j])
+            pair = _series_pair_for(rspec, spec.T, prng)
+            # couple d_i to THIS replicate's V by regenerating the pair's coupling
+            # against the shared V: use the pair's d directly but re-anchor so the
+            # planted correlation is to the shared V(t). We instead build d_i as a
+            # mixture of the shared V and idiosyncratic noise (see helper).
+            d_by_canon[rspec.canonical] = _couple_to_reference(
+                V, rspec, prng)
+        tau_v = ar1_tau_int(spec.v_phi)
+        out.append(TierBReplicateSeries(V=V, d_by_canon=d_by_canon,
+                                        tau_int_v_analytic=tau_v))
+    return out
+
+
+def _series_pair_for(rspec: SeriesResidueSpec, T: int, rng):
+    """Dispatch to the right process family (used for standalone pair fixtures)."""
+    from .processes import (
+        coupled_ar1_pair, coupled_ou_pair, coupled_ar2_pair,
+        coupled_heavy_tailed_pair, coupled_slow_mixing_pair,
+    )
+    p = rspec.process
+    if p == "ar1":
+        return coupled_ar1_pair(T, rspec.target_r, rspec.phi, rng)
+    if p == "ou":
+        return coupled_ou_pair(T, rspec.target_r, rspec.theta_ou, rspec.dt, rng)
+    if p == "ar2":
+        return coupled_ar2_pair(T, rspec.target_r, rspec.a1, rspec.a2, rng)
+    if p == "heavy_tailed":
+        return coupled_heavy_tailed_pair(T, rspec.target_r, rspec.phi,
+                                         rspec.df, rng)
+    if p == "slow_mixing":
+        return coupled_slow_mixing_pair(T, rspec.target_r, rng, phi=rspec.phi)
+    raise ValueError(f"unknown process {p!r}")
+
+
+def _couple_to_reference(V, rspec: SeriesResidueSpec, rng):
+    """Build ``d_i(t)`` correlated with the shared reference ``V`` at ``target_r``.
+
+    ``d_i = sign(r) * sqrt(|r|) * V_std + sqrt(1-|r|) * noise_i``, where ``V_std``
+    is the standardized reference and ``noise_i`` is an autocorrelated series drawn
+    from the residue's own process family (so d inherits realistic autocorrelation
+    and, for the misspecified families, the intended tail/structure). The sample
+    correlation of ``d_i`` with ``V`` concentrates at ``target_r``.
+    """
+    import numpy as np
+    from .processes import (
+        ar1_series, ar2_series, gaussian_innovations, student_t_innovations,
+    )
+    T = V.size
+    Vc = V - V.mean()
+    Vsd = Vc / (Vc.std() if Vc.std() > 0 else 1.0)
+    p = rspec.process
+    if p in ("ar1", "slow_mixing"):
+        noise = ar1_series(T, rspec.phi, rng)
+    elif p == "ou":
+        from .processes import ou_phi
+        noise = ar1_series(T, ou_phi(rspec.theta_ou, rspec.dt), rng)
+    elif p == "ar2":
+        noise = ar2_series(T, rspec.a1, rspec.a2, rng)
+    elif p == "heavy_tailed":
+        noise = ar1_series(T, rspec.phi, rng,
+                           innovations=student_t_innovations(df=rspec.df))
+    else:
+        raise ValueError(f"unknown process {p!r}")
+    nsd = noise.std()
+    noise = noise / (nsd if nsd > 0 else 1.0)
+    r = rspec.target_r
+    # Bivariate construction: for standardized, independent V and noise,
+    # d = r * Vstd + sqrt(1 - r^2) * noise has population corr(d, V) = r exactly.
+    b = np.sqrt(max(1.0 - r * r, 0.0))
+    return r * Vsd + b * noise
+
+
+def _validate_tierb_spec(spec: TierBSystemSpec) -> None:
+    ids = [r.canonical for r in spec.residues]
+    if len(ids) != len(set(ids)):
+        dupes = sorted({r for r in ids if ids.count(r) > 1})
+        raise ValueError(f"duplicate canonical ids in Tier-B spec: {dupes}")
+    if not spec.levels or spec.levels[-1] != "residue":
+        raise ValueError("levels must be coarse->fine and end in 'residue'")
+    if spec.resnames and len(spec.resnames) != len(spec.residues):
+        raise ValueError("resnames length must match residues length")
+    if spec.K < 1 or spec.T < 2:
+        raise ValueError("need K >= 1 and T >= 2")
+
+
+def series_digest(replicates) -> str:
+    """Stable content hash of the raw Tier-B series (determinism tests)."""
+    h = hashlib.sha256()
+    for rep in replicates:
+        h.update(np.asarray(rep.V, float).tobytes())
+        for cid in sorted(rep.d_by_canon):
+            h.update(str(cid).encode("utf-8"))
+            h.update(np.asarray(rep.d_by_canon[cid], float).tobytes())
+    return h.hexdigest()

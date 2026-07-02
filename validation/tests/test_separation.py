@@ -82,8 +82,16 @@ def test_generate_module_is_mechanism_free():
 
 def test_bridge_imports_only_public_mechanism_names():
     # adapters.py may import mechanism, but only public (non-underscore) names,
-    # and only from the public hierarchy schema. Parse the AST to check both the
+    # and only from documented public modules. Parse the AST to check both the
     # module path and every imported symbol.
+    #
+    # [V1] hierarchy schema (spec->HierarchyConfig translation)
+    # [V2] the public §2.1 stack in mechanism.statistics (production correlation,
+    #      effective_sample_size, corrected_standard_error, bootstrap_correlation)
+    _ALLOWED_MODULES = {
+        "mechanism.config.hierarchy_schema",
+        "mechanism.statistics",
+    }
     adapters = os.path.join(_VALIDATION, "adapters.py")
     tree = ast.parse(open(adapters, encoding="utf-8").read())
     for node in ast.walk(tree):
@@ -97,10 +105,9 @@ def test_bridge_imports_only_public_mechanism_names():
             for alias in node.names:
                 assert not alias.name.startswith("_"), \
                     f"bridge imports underscore name: {alias.name}"
-            # confine to the documented public schema module
-            assert node.module == "mechanism.config.hierarchy_schema", \
-                (f"bridge must import only mechanism.config.hierarchy_schema, "
-                 f"got {node.module}")
+            # confine to the documented public modules
+            assert node.module in _ALLOWED_MODULES, \
+                (f"bridge must import only {_ALLOWED_MODULES}, got {node.module}")
         if isinstance(node, ast.Import):
             for alias in node.names:
                 assert not alias.name.startswith("mechanism") or \

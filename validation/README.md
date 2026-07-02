@@ -60,14 +60,51 @@ equal-size null regions — rather than the idealized "nulls read as zero". Cali
 `rho*` to control the folded-null inflation is the deferred V4 work; V1 does not
 modify production or the specification to address it.
 
-## Separation boundary (V1, tightened from V0)
+## V2 contents (Tier-B series-level generator + §2.1 chain validation)
 
-At V0 no validation module imported `mechanism`. V1 opens exactly one narrow edge:
-only `adapters.py` imports `mechanism`, and only the public
-`mechanism.config.hierarchy_schema`. The separation tests enforce that the set of
-validation non-test modules importing `mechanism` is a subset of `{adapters.py}` and
-that only public (non-underscore) names are used; `generate.py` stays `mechanism`-free
-and `import validation` remains production-free.
+| Module | Purpose |
+|---|---|
+| `processes.py` | **pure** autocorrelated-process generators (imports no `mechanism`): AR(1)/OU with analytic `tau_int`, coupled `(V, d)` pairs at a target Pearson `r`, and the misspecification stress families (heavy-tailed Student-t innovations, non-AR(1) AR(2), slow-mixing near-unit-root) |
+| `generate.py` (extended) | **pure** Tier-B orchestration: `TierBSystemSpec`, `SeriesResidueSpec`, `generate_series_replicates` (synthesises `V(t)` and each `d_i(t)`), `series_digest` |
+| `adapters.py` (extended) | the Tier-B production bridge: `recover_residue_effect` / `recover_frames_from_series` run the series through the **production** §2.1 stack (`pearson_both`, `effective_sample_size`, `corrected_standard_error`, `bootstrap_correlation`) and assemble production-schema frames (reusing V1's `build_per_run_frame`); `tierb_hierarchy_config` |
+| `tests/test_processes.py`, `tests/test_tierb.py` | analytic anchors, production `tau_int`/`r`/`N_eff`/Fisher-SE/bootstrap recovery, misspecification handling, end-to-end aggregation, determinism |
+
+### What V2 validates (spec §2.1)
+
+Tier B synthesises the **time series** rather than planting the effect field, then
+recovers everything through production: `theta = r(V, d_i)` via `pearson_both`;
+`N_eff = T / (2 tau_int)` and `sigma^2 = (1 - theta^2)^2 / N_eff` via
+`effective_sample_size` + `corrected_standard_error`; the block-bootstrap refinement
+via `bootstrap_correlation`. AR(1) anchors the analytic `tau_int = 1/2 (1+phi)/(1-phi)`.
+
+### Observed properties of the current estimator (characterized, not hidden)
+
+* **[KNOWN LIMITATION]** `effective_sample_size` estimates `tau_int` on the **product
+  series** `z = (V-mean V)(d-mean d)`, whose autocorrelation differs from the raw
+  series'. So the clean AR(1) `tau_int` formula anchors the **raw** series (tested
+  directly via `integrated_autocorr_time`), while the product-series `N_eff` is a
+  derived quantity V2 characterizes (it shrinks with `phi`).
+* **[KNOWN LIMITATION]** For a near-unit-root (`phi -> 1`) series on a **short**
+  trajectory, Sokal windowing **under-estimates** `tau_int` (the true value is far
+  larger). `test_slow_mixing_iat_is_underestimated_current_estimator` asserts the
+  direction honestly; the estimator does not flag this via `status`.
+* **[KNOWN LIMITATION]** The block-bootstrap CI **under-covers** under autocorrelation,
+  and the shortfall grows with `phi` (~0.95 at `phi=0`, ~0.87 at `phi=0.7`). Tested as
+  a characterized trend, not asserted at the nominal 0.95.
+
+These are properties of the current implementation, documented without modifying the
+specification or production code.
+
+## Separation boundary (V1/V2, tightened from V0)
+
+At V0 no validation module imported `mechanism`. V1/V2 open exactly one narrow edge:
+only `adapters.py` imports `mechanism`, and only from documented public modules
+(`mechanism.config.hierarchy_schema` for the hierarchy translation and the public
+`mechanism.statistics` §2.1 functions for Tier-B recovery). The separation tests
+enforce that the set of validation non-test modules importing `mechanism` is a subset
+of `{adapters.py}`, that only public (non-underscore) names are used, and that they
+come only from those two modules; `generate.py` and `processes.py` stay
+`mechanism`-free and `import validation` remains production-free.
 
 ## Running the validation tests
 
