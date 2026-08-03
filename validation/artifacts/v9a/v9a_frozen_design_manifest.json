@@ -1,0 +1,35 @@
+{
+  "artifact_sha256": {
+    "alias_effects": "9bb8f4a45c7991e6bfff35f5255cc5669842e6e8d8a9f2b6f6b457ea18a41c20",
+    "first_crossing": "8447560e939c3e2ca5242e699f16641f461c7611c78db17e00000cd3ef8c4d8e",
+    "results": "da3a4d8ceabe6ec493c47abb06ab358798b0e9cb21a125e2af4506bd28f3a0d9",
+    "snapshot": "b765662cc826e355d54c45c2397a1f5badbc1a42c37b8e5cf0812977379c86dd",
+    "support_size": "f1bc2e65fc9fac3084693b259e3a597668ea9791138f18429a9d17bc4fe4224f"
+  },
+  "design": {
+    "K": 3,
+    "draws_per_dataset_regime": 500,
+    "expected_realizations": 4000,
+    "master_seed": 2026072801,
+    "rho_star_provisional": 0.5
+  },
+  "environment": {
+    "packages": {
+      "PyYAML": "6.0.3",
+      "numpy": "2.5.1",
+      "pandas": "3.0.5",
+      "pyarrow": "25.0.0",
+      "pytest": "9.1.1",
+      "scipy": "1.18.0"
+    },
+    "python_executable": "/private/tmp/stride_phase2d_audit_env/bin/python",
+    "python_version": "3.13.5"
+  },
+  "purpose": "descriptive_synthetic_characterization_not_calibration",
+  "schema_version": "v9a.manifest.1",
+  "source": {
+    "downstream_commit": "4388dbcefaaa1672b63cc7bbce357e1b4ec40b71",
+    "stride_commit_observed": "b06f7d1d40b5d860915cf1e1f046a6392f71a09b",
+    "stride_commit_required": "b06f7d1d40b5d860915cf1e1f046a6392f71a09b"
+  }
+}
