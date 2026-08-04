@@ -13,23 +13,11 @@
     "master_seed": 2026072801,
     "rho_star_provisional": 0.5
   },
-  "environment": {
-    "packages": {
-      "PyYAML": "6.0.3",
-      "numpy": "2.5.1",
-      "pandas": "3.0.5",
-      "pyarrow": "25.0.0",
-      "pytest": "9.1.1",
-      "scipy": "1.18.0"
-    },
-    "python_executable": "/private/tmp/stride_phase2d_audit_env/bin/python",
-    "python_version": "3.13.5"
-  },
   "purpose": "descriptive_synthetic_characterization_not_calibration",
   "schema_version": "v9a.manifest.1",
   "source": {
     "downstream_commit": "4388dbcefaaa1672b63cc7bbce357e1b4ec40b71",
-    "stride_commit_observed": "b06f7d1d40b5d860915cf1e1f046a6392f71a09b",
+    "production_source_hash_manifest": "v9a_production_source_hashes.json",
     "stride_commit_required": "b06f7d1d40b5d860915cf1e1f046a6392f71a09b"
   }
 }

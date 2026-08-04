@@ -38,7 +38,6 @@ import sys
 import time
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -111,6 +110,10 @@ SUPPORT_SIZE_FILENAME = "v9a_frozen_design_support_size.csv"
 FIRST_CROSSING_FILENAME = "v9a_frozen_design_first_crossing.csv"
 ALIAS_FILENAME = "v9a_frozen_design_alias_effects.csv"
 MANIFEST_FILENAME = "v9a_frozen_design_manifest.json"
+RUNTIME_PROVENANCE_FILENAME = "v9a_runtime_provenance.json"
+PRODUCTION_SOURCE_MANIFEST = (
+    Path(__file__).resolve().parent / "v9a_production_source_hashes.json"
+)
 
 
 class SnapshotError(RuntimeError):
@@ -1414,9 +1417,11 @@ def run_v9a(
     realization_rows.sort(
         key=lambda x: (x["dataset_id"], REGIMES.index(x["regime"]), x["draw_index"])
     )
-    if len(realization_rows) != 4000:
+    expected_realizations = len(snapshot["datasets"]) * len(REGIMES) * draws
+    if len(realization_rows) != expected_realizations:
         raise RuntimeError(
-            f"expected 4,000 realization records, observed {len(realization_rows)}"
+            f"expected {expected_realizations} realization records, "
+            f"observed {len(realization_rows)}"
         )
     failures = build_failure_ledger(realization_rows)
     support_size = _summarize_support_size(realization_rows, snapshot)
@@ -1435,10 +1440,10 @@ def run_v9a(
         "draws_per_dataset_regime": N_DRAWS,
         "dataset_count": 4,
         "regime_count": 2,
-        "expected_realizations": 4000,
-        "successful_realizations": 4000 - len(failures),
+        "expected_realizations": expected_realizations,
+        "successful_realizations": expected_realizations - len(failures),
         "failed_realizations": len(failures),
-        "failure_rate": len(failures) / 4000,
+        "failure_rate": len(failures) / expected_realizations,
         "failure_ledger": failures,
         "snapshot_verification": verification,
         "assumptions": snapshot["assumptions"],
@@ -1464,10 +1469,86 @@ def run_v9a(
     return results, support_size, first_crossing, alias
 
 
-def _git_value(repo: Path, *args: str) -> str:
-    return subprocess.check_output(
-        ["git", *args], cwd=repo, text=True
-    ).strip()
+def _git_result(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args], cwd=repo, text=True, capture_output=True, check=False
+    )
+
+
+def _git_value(repo: Path, *args: str) -> str | None:
+    result = _git_result(repo, *args)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _production_source_hashes(repo_root: Path) -> dict[str, str]:
+    expected = json.loads(PRODUCTION_SOURCE_MANIFEST.read_text(encoding="ascii"))
+    hashes: dict[str, str] = {}
+    missing: list[str] = []
+    for relative in sorted(expected["files"]):
+        path = repo_root / relative
+        if not path.is_file():
+            missing.append(relative)
+        else:
+            hashes[relative] = sha256_file(path)
+    if missing:
+        raise RuntimeError(f"missing frozen production sources: {missing}")
+    mismatches = {
+        relative: {"expected": expected["files"][relative], "observed": digest}
+        for relative, digest in hashes.items()
+        if digest != expected["files"][relative]
+    }
+    if mismatches:
+        raise RuntimeError(f"frozen production source hash mismatch: {mismatches}")
+    return hashes
+
+
+def verify_execution_provenance(repo_root: str | Path) -> dict[str, object]:
+    """Verify frozen production sources and classify available Git evidence."""
+    repo_root = Path(repo_root).resolve()
+    source_hashes = _production_source_hashes(repo_root)
+    head = _git_value(repo_root, "rev-parse", "HEAD")
+    if head is None:
+        return {
+            "required_production_anchor": STRIDE_COMMIT,
+            "observed_head": None,
+            "head_detached": None,
+            "git_history_status": "git_metadata_unavailable",
+            "production_source_status": "verified_against_frozen_hashes",
+            "production_source_hashes": source_hashes,
+        }
+
+    detached = _git_result(repo_root, "symbolic-ref", "-q", "HEAD").returncode != 0
+    anchor_exists = _git_result(
+        repo_root, "cat-file", "-e", f"{STRIDE_COMMIT}^{{commit}}"
+    ).returncode == 0
+    if anchor_exists:
+        ancestor = _git_result(
+            repo_root, "merge-base", "--is-ancestor", STRIDE_COMMIT, head
+        ).returncode == 0
+        if not ancestor:
+            raise RuntimeError(
+                f"Git history is incompatible with production anchor {STRIDE_COMMIT}"
+            )
+        history_status = "exact_frozen_anchor" if head == STRIDE_COMMIT else (
+            "frozen_anchor_ancestor_of_detached_head" if detached
+            else "frozen_anchor_ancestor_of_head"
+        )
+    else:
+        shallow = _git_value(repo_root, "rev-parse", "--is-shallow-repository")
+        if shallow == "true":
+            history_status = "anchor_unavailable_in_shallow_checkout"
+        else:
+            raise RuntimeError(
+                f"production anchor {STRIDE_COMMIT} is unavailable in non-shallow Git history"
+            )
+    return {
+        "required_production_anchor": STRIDE_COMMIT,
+        "observed_head": head,
+        "head_detached": detached,
+        "git_history_status": history_status,
+        "production_source_status": "verified_against_frozen_hashes",
+        "production_source_hashes": source_hashes,
+    }
 
 
 def _package_versions() -> dict[str, str]:
@@ -1483,8 +1564,6 @@ def write_artifacts(
     support_size: pd.DataFrame,
     first_crossing: pd.DataFrame,
     alias: pd.DataFrame,
-    *,
-    repo_root: str | Path,
 ) -> dict[str, str]:
     """Write deterministic artifacts and a manifest hashing the other files."""
     output_dir = Path(output_dir)
@@ -1508,25 +1587,19 @@ def write_artifacts(
             paths[key], index=False, lineterminator="\n",
             float_format="%.12g",
         )
-    repo_root = Path(repo_root).resolve()
     manifest = {
         "schema_version": "v9a.manifest.1",
         "purpose": "descriptive_synthetic_characterization_not_calibration",
-        "environment": {
-            "python_executable": sys.executable,
-            "python_version": platform.python_version(),
-            "packages": _package_versions(),
-        },
         "source": {
             "stride_commit_required": STRIDE_COMMIT,
-            "stride_commit_observed": _git_value(repo_root, "rev-parse", "HEAD"),
             "downstream_commit": DOWNSTREAM_COMMIT,
+            "production_source_hash_manifest": PRODUCTION_SOURCE_MANIFEST.name,
         },
         "design": {
             "K": K,
             "master_seed": MASTER_SEED,
             "draws_per_dataset_regime": N_DRAWS,
-            "expected_realizations": 4000,
+            "expected_realizations": 4 * len(REGIMES) * N_DRAWS,
             "rho_star_provisional": RHO_STAR,
         },
         "artifact_sha256": {
@@ -1552,11 +1625,7 @@ def execute(
         Path(repo_root).resolve()
         if repo_root is not None else Path(__file__).resolve().parents[1]
     )
-    observed_commit = _git_value(repo_root, "rev-parse", "HEAD")
-    if observed_commit != STRIDE_COMMIT:
-        raise RuntimeError(
-            f"V9A requires STRIDE {STRIDE_COMMIT}, observed {observed_commit}"
-        )
+    provenance = verify_execution_provenance(repo_root)
     snapshot = extract_snapshot(frozen_root)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1565,10 +1634,23 @@ def execute(
     results, support_size, first_crossing, alias = run_v9a(
         snapshot, master_seed=master_seed, draws=draws, workers=workers
     )
-    return write_artifacts(
-        output_dir, snapshot, results, support_size, first_crossing, alias,
-        repo_root=repo_root,
+    hashes = write_artifacts(
+        output_dir, snapshot, results, support_size, first_crossing, alias
     )
+    runtime = {
+        "schema_version": "v9a.runtime_provenance.1",
+        "scientific_manifest_sha256": hashes["manifest"],
+        "git_and_source_provenance": provenance,
+        "environment": {
+            "python_executable": sys.executable,
+            "python_version": platform.python_version(),
+            "packages": _package_versions(),
+        },
+    }
+    runtime_path = output_dir / RUNTIME_PROVENANCE_FILENAME
+    write_json(runtime_path, runtime)
+    hashes["runtime_provenance"] = sha256_file(runtime_path)
+    return hashes
 
 
 def build_parser() -> argparse.ArgumentParser:

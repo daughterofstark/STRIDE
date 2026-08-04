@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -197,3 +199,103 @@ def test_artifact_item_decisions_record_labels_not_empirical_invariance(snapshot
     assert (membership["count"] == 0).all()
     assert (rho["count"] == 0).all()
     assert (labels["count"] > 0).all()
+
+
+def _copy_production_sources(destination: Path) -> None:
+    source_root = Path(v9a.__file__).resolve().parents[1]
+    manifest = json.loads(v9a.PRODUCTION_SOURCE_MANIFEST.read_text())
+    for relative in manifest["files"]:
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_root / relative, target)
+
+
+def test_provenance_descendant_full_clone_and_detached_head(tmp_path):
+    repo = Path(v9a.__file__).resolve().parents[1]
+    full = v9a.verify_execution_provenance(repo)
+    assert full["git_history_status"] == "frozen_anchor_ancestor_of_head"
+    assert full["production_source_status"] == "verified_against_frozen_hashes"
+
+    detached = tmp_path / "detached"
+    subprocess.run(["git", "clone", "-q", str(repo), str(detached)], check=True)
+    subprocess.run(
+        ["git", "checkout", "-q", "--detach", "HEAD"], cwd=detached, check=True
+    )
+    observed = v9a.verify_execution_provenance(detached)
+    assert observed["git_history_status"] == "frozen_anchor_ancestor_of_detached_head"
+    assert observed["head_detached"] is True
+
+
+def test_provenance_exact_anchor_checkout_with_external_v9a(tmp_path):
+    repo = Path(v9a.__file__).resolve().parents[1]
+    checkout = tmp_path / "anchor"
+    subprocess.run(["git", "clone", "-q", str(repo), str(checkout)], check=True)
+    subprocess.run(
+        ["git", "checkout", "-q", "--detach", v9a.STRIDE_COMMIT],
+        cwd=checkout,
+        check=True,
+    )
+    observed = v9a.verify_execution_provenance(checkout)
+    assert observed["git_history_status"] == "exact_frozen_anchor"
+
+
+def test_provenance_shallow_clone_uses_source_hashes(tmp_path):
+    repo = Path(v9a.__file__).resolve().parents[1]
+    shallow = tmp_path / "shallow"
+    subprocess.run(
+        ["git", "clone", "-q", "--depth", "1", f"file://{repo}", str(shallow)],
+        check=True,
+    )
+    observed = v9a.verify_execution_provenance(shallow)
+    assert observed["git_history_status"] == "anchor_unavailable_in_shallow_checkout"
+    assert observed["production_source_status"] == "verified_against_frozen_hashes"
+
+
+def test_provenance_source_export_without_git_uses_source_hashes(tmp_path):
+    export = tmp_path / "export"
+    _copy_production_sources(export)
+    observed = v9a.verify_execution_provenance(export)
+    assert observed["git_history_status"] == "git_metadata_unavailable"
+    assert observed["production_source_status"] == "verified_against_frozen_hashes"
+
+
+def test_provenance_rejects_unrelated_history_and_modified_source(tmp_path):
+    unrelated = tmp_path / "unrelated"
+    _copy_production_sources(unrelated)
+    subprocess.run(["git", "init", "-q", str(unrelated)], check=True)
+    subprocess.run(["git", "config", "user.email", "audit@example.invalid"], cwd=unrelated, check=True)
+    subprocess.run(["git", "config", "user.name", "Audit"], cwd=unrelated, check=True)
+    subprocess.run(["git", "add", "."], cwd=unrelated, check=True)
+    subprocess.run(["git", "commit", "-qm", "fabricated"], cwd=unrelated, check=True)
+    with pytest.raises(RuntimeError, match="unavailable in non-shallow Git history"):
+        v9a.verify_execution_provenance(unrelated)
+
+    export = tmp_path / "modified"
+    _copy_production_sources(export)
+    source = export / "src/mechanism/statistics/reproducibility.py"
+    source.write_text(source.read_text() + "\n# modified\n")
+    with pytest.raises(RuntimeError, match="source hash mismatch"):
+        v9a.verify_execution_provenance(export)
+
+
+def test_execute_end_to_end_on_committed_snapshot(monkeypatch, snapshot, tmp_path):
+    repo = Path(v9a.__file__).resolve().parents[1]
+    monkeypatch.setattr(v9a, "extract_snapshot", lambda _root: snapshot)
+    monkeypatch.setattr(v9a, "N_DRAWS", 1)
+    hashes = v9a.execute(
+        tmp_path / "unused-frozen-root",
+        tmp_path / "output",
+        draws=1,
+        workers=1,
+        repo_root=repo,
+    )
+    assert set(hashes) == {
+        "snapshot", "results", "support_size", "first_crossing",
+        "alias_effects", "manifest", "runtime_provenance",
+    }
+    runtime = json.loads(
+        (tmp_path / "output" / v9a.RUNTIME_PROVENANCE_FILENAME).read_text()
+    )
+    assert runtime["git_and_source_provenance"]["production_source_status"] == (
+        "verified_against_frozen_hashes"
+    )
