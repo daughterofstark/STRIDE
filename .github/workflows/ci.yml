@@ -8,14 +8,22 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      # Pure-stats parity needs only the light core (no MDAnalysis) — fast CI.
-      - run: pip install numpy pandas scipy matplotlib pytest pillow
-      - run: pip install -e . --no-deps
-      - name: Run M0 parity + functional tests (MDAnalysis-free)
-        run: pytest tests/test_stats_parity.py -v
-      # Golden CSV/figure tests skip automatically without MECHANISM_DATA_DIR + fixtures.
-      - name: Run golden tests (skip if no data)
-        run: pytest tests/test_golden_csv.py tests/test_golden_figures.py -v
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Lint production and Phase 3 validation entry points
+        run: >-
+          ruff check src validation/v9a_frozen_design.py
+          validation/tests/test_v9a_frozen_design.py tests/test_readme_links.py
+      - name: Run core tests (golden skips reported explicitly)
+        run: pytest tests -q -rs
+      - name: Run complete validation suite
+        run: pytest validation/tests -q
+      - name: Exercise V9A execute provenance path
+        run: >-
+          pytest validation/tests/test_v9a_frozen_design.py::test_execute_end_to_end_on_committed_snapshot
+          -q

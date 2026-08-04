@@ -1,276 +1,129 @@
 # STRIDE
 
-**STRIDE** infers mechanistic claims from replicate molecular-dynamics (MD) simulations
-**at — and only at — the spatial resolution the replicate evidence supports.**
+STRIDE is a downstream, deterministic, replicate-aware descriptive accounting
+framework for scalar run-item effect fields with marginal uncertainty. It does
+not generate trajectories or upstream effect fields.
 
-Standard single-trajectory practice reports `argmax_i |θ_i|` — the residue with the
-largest effect in one trajectory — as "the mechanism." That is a residue-resolution claim
-with *unbounded reproducibility uncertainty*: nothing guarantees the same residue would
-appear in an independent replicate. STRIDE instead asks a well-posed question — *at what
-spatial scale is a mechanistic effect field reproducible across independent replicates,
-relative to autocorrelation-corrected sampling noise?* — estimates a **calibrated
-reproducibility threshold**, and **refuses to over-resolve** when the data do not support
-a fine-grained claim.
+The software reports several quantities that should be kept separate:
 
-> **Core idea.** For each region `R` at hierarchy scale `ℓ`, STRIDE estimates a
-> reproducibility coefficient `ρ_R = β_R² / (β_R² + τ_R² + σ̄_R²) ∈ [0, 1]` — the fraction
-> of effect variance that is reproducible signal (`β` = reproducible effect, `τ²` =
-> between-replicate variance, `σ̄²` = autocorrelation-corrected within-replicate variance).
-> A region passes at scale `ℓ` if `ρ̂_R ≥ ρ*`, where `ρ*` is an empirically **calibrated**
-> threshold with a controlled false-resolution rate. The gate returns `ℓ̂*`, the finest
-> scale at which the mechanistic claim is reproducible — coarsening (the safe error) when
-> the evidence is weak.
+- support-specific magnitude stability (`rho`);
+- operational sign coherence;
+- fitted between-run and propagated within-run variance components;
+- provisional support-crossing summaries;
+- optional conditional selected-support signed associations.
 
----
+The public interface can accept other scalar effect fields, but interface
+generality is not evidence that statistical operating characteristics have been
+validated for every observable, run count, dependence structure, or hierarchy.
 
-## Features
+## Inputs
 
-### Production framework (`mechanism`)
-- Reproducibility-gated mechanistic inference from replicate MD trajectories.
-- Per-residue effect (`θ`) estimation with **autocorrelation-corrected** uncertainty
-  (effective sample size, block bootstrap).
-- A residue → domain → chain **hierarchy** model with canonical numbering.
-- **Variance-component** decomposition (`β`, `τ²`, `σ̄²`) and the reproducibility
-  coefficient `ρ`.
-- A per-locus **resolution profile `Π`**, a calibrated **gate**, and emitted
-  **mechanisms** at the gated scale `ℓ̂*`.
-- Byte-for-byte reproduction of the original "v5" analysis (a golden-tested,
-  behaviour-preserving foundation).
+The aggregation layer consumes one table per run containing an item identifier,
+a scalar effect estimate, and a marginal standard error. Support membership is
+provided through a hierarchy configuration. The framework treats these inputs
+as supplied; upstream trajectory construction and uncertainty generation are
+outside STRIDE.
 
-### Validation framework (`validation/`)
-- **Synthetic ground-truth generators** (field-level and autocorrelated series-level).
-- **Closed-form predicted** operating characteristics (FPR, power, coverage, `ℓ_min`,
-  over-resolution bound).
-- **Empirical `ρ*` calibration** via surrogate-null quantiles.
-- **Empirical-vs-predicted** operating-characteristic checks (FPR, power, coverage,
-  consistency, the I2/I3 invariances).
-- **Baselines and comparative tests** (single-trajectory, naive ensemble, residue
-  ranking, G-theory; McNemar / Wilcoxon / DeLong / paired bootstrap / Benjamini–Hochberg).
-- A reproducible **sweep runner**, deterministic **persistence**, and a **CLI**.
-- A **publication layer**: figures, manuscript tables, and the generated
-  `VALIDATION_AND_BENCHMARKING.md` report.
+## Magnitude aggregation and rho
 
----
-
-## Mathematical foundations
-
-STRIDE estimates `ℓ*`, the finest spatial scale at which a mechanistic effect field is
-reproducible across independent replicates, together with its scale-indexed profile `Π`
-and a calibrated gate `ℓ̂*`. The reproducibility coefficient `ρ` is a
-reliability/generalizability coefficient (the fraction of effect variance that is
-reproducible signal); the threshold `ρ*` is calibrated as the upper-`α` quantile of `ρ̂`
-under a surrogate null, giving a controlled false-resolution rate. The estimator obeys
-structural invariances — region reproducibility dominates residue reproducibility when a
-signal permutes within a region (I1), the passable set is upward-closed (I2), the gate is
-standardization-invariant (I3), and it is monotone in `ρ*` (I4) — and is consistent as
-`K, T → ∞`.
-
-The full method, its derivations, and its operating-characteristic theory are in
-[`MATHEMATICAL_SPECIFICATION.md`](MATHEMATICAL_SPECIFICATION.md). This README does not
-reproduce the specification.
-
----
-
-## Repository structure
+For support `R` and run `k`, STRIDE standardizes item effects by one pooled field
+scale and computes the L2 magnitude
 
 ```
-src/mechanism/     Production package (installed as `mechanism`). Frozen scientific instrument.
-validation/        Validation & benchmarking framework (Phase 2). Not installed. Imports
-                   mechanism read-only through a single bridge; mechanism never imports it.
-tests/             Production tests (v5-parity + golden regression harness).
-reference/         Original v5 source, kept for source-identity tests.
-scripts/           Golden-fixture capture.
-configs/           Example hierarchy configuration (denv_hierarchy.yaml).
-.github/           CI workflows.
-MATHEMATICAL_SPECIFICATION.md   The method (ground truth).
-IMPLEMENTATION_ROADMAP.md       Production roadmap (M0–M6).
-VALIDATION_ROADMAP.md           Validation roadmap (V0–V8).
-VALIDATION_AND_BENCHMARKING.md  Generated validation report (V8).
+Theta_Rk = sqrt(sum_i z_ik^2).
 ```
 
----
+Under the implemented diagonal-covariance approximation, item variances are
+propagated through this operator. The run-support magnitudes are fitted with a
+random-effects model. At small `K` the implementation uses its deterministic
+Bayesian half-Normal heterogeneity path; heterogeneity is weakly identified at
+`K=3`.
 
-## Installation
+The rho numerator is the empirical bias-corrected magnitude term
 
-Requirements: **Python ≥ 3.10**. Core dependencies: numpy, pandas, scipy, matplotlib,
-MDAnalysis, PyYAML.
-
-```bash
-pip install -e .            # core (includes MDAnalysis) — to run the production pipeline
-pip install -e ".[dev]"     # + pytest, pillow (test suite)
-pip install -e ".[msa]"     # + biopython (optional MSA features)
+```
+B_R = max(mean(Theta_R)^2 - var(Theta_R, ddof=1) / K, 0),
+rho_R = B_R / (B_R + tau_R^2 + sigma2_bar_R).
 ```
 
-The `validation/` package is intentionally **not** installed (it lives outside `src/`).
-Run it in place from the repository root.
+The stored fitted `beta` is not the squared numerator `B_R`. Rho is clipped to
+`[0, 1]` by the implementation. It is a support-specific magnitude-stability
+ratio, not a truth probability, a fraction of biologically reproducible signal,
+sign agreement, item-pattern agreement, or carrier-identity agreement.
 
----
+Different support sizes define different L2 aggregate objects. A larger rho at
+a larger support is not automatically stronger evidence. V9A characterizes this
+operator behavior under registered frozen-design synthetic assumptions and
+finds support-size association even under zero-mean inputs.
 
-## Quick start
+## Operational references and signed outputs
 
-Analyze a set of replicate trajectories and obtain gated mechanisms:
+The frozen descriptive application uses `rho = 0.5` only as a provisional,
+uncalibrated operational reference. First crossing is bookkeeping over a
+configured traversal; it is not a calibrated scale decision or a license for a
+claim at one resolution.
 
-```python
-from mechanism import Config, run_pipeline
+Signed fitting follows data-dependent provisional support selection and an
+operational coherence rule. Wald intervals, p-values, and within-dataset BH
+flags are conditional descriptive outputs. Post-selection FDR control has not
+been established.
 
-# `base_dir` points to a directory of replicate ("triplicate") trajectories laid out
-# as the pipeline expects; see configs/denv_hierarchy.yaml for the hierarchy definition.
-run_pipeline(Config(base_dir="/path/to/TRIPLICATES"))
+## Validation scope
+
+The repository contains mathematical unit tests, component-level synthetic
+checks, and V9A. V9A uses the production estimator to characterize support-size
+and operator behavior under a fixed `K=3`, zero-covariance synthetic design. It
+conditions on registered support-alias classes; it does not discover them,
+calibrate `0.5`, model the upstream process, or validate inferential or
+biological claims.
+
+V9B lives in the STRIDE_downstream repository and verifies deterministic
+presence-aware recurrence arithmetic. Neither V9A nor V9B establishes arbitrary
+statistical generality, homology, mechanism, selected-interval coverage, or
+post-selection FDR control.
+
+Frozen expected-value checks are consistency guards. They are not independent
+statistical validation.
+
+## Legacy terminology warning
+
+Historical public names remain for compatibility. In particular, names that
+contain `reproducibility`, `mechanism`, `licensed`, `exploratory`,
+`significant_fdr`, `serotype`, or `conservation` must be interpreted through the
+current definitions above and the relevant schema documentation. They do not,
+by name alone, establish biological mechanism, evidential licensing,
+post-selection FDR control, homology, or biological conservation.
+
+## Installation and tests
+
+```
+python -m pip install -e ".[dev]"
+pytest tests validation/tests
 ```
 
-or from the command line (flags mirror the original v5 pipeline):
+The V9A focused suite includes production-source integrity checks and Git
+provenance checks for full, shallow, detached, and no-Git source layouts. A
+source export can run without `.git` only when the frozen production source
+hashes match. An unrelated full Git history or a modified production source is
+rejected.
 
-```bash
-mechanism /path/to/TRIPLICATES --stride 20 --frame-ps 10
-```
+The repository's CI runs linting, core tests, validation tests, V9A tests, and a
+focused `execute()` provenance-path test. Golden tests are reported separately
+and skip when their optional external fixtures are absent.
 
-Outputs include the v5-parity analysis tables/figures plus a **mechanism report**: for
-each region, the gated scale `ℓ̂*`, the reproducibility coefficient `ρ̂`, the signed
-effect `β̂` with a confidence interval, and a direction. A mechanism emitted at *domain*
-scale means the replicate evidence supports a domain-level claim — STRIDE has refused to
-over-resolve to individual residues.
+## Repository map
 
----
-
-## Running the validation framework
-
-The validation study is **already complete**; its results are frozen in the repository.
-These commands are primarily for **verification** or **extension**. Run from the repo root.
-
-```bash
-# Calibrate a reproducibility threshold rho* (explicit step; writes a frozen artifact)
-python -m validation calibrate --system DENV_NS2B_NS3 --K 5
-
-# Run the operating-characteristic sweep over the (system, K, T, tau2, beta2) grid
-# (loads calibrated rho*; never calibrates implicitly; deterministic & reproducible)
-python -m validation sweep \
-  --systems DENV_NS2B_NS3 two_level_single_chain three_level_two_chain \
-  --K 3 5 10 --beta2 0.16 0.36 1.0 --n-eval 50 \
-  --out validation/artifacts/sweep_results.jsonl
-
-# Build the publication package (figures + tables + report) from the frozen store
-python -m validation report --out validation/artifacts/publication
-```
-
-Run the validation test suite with `python -m pytest validation/tests` (269 tests, ~3 min).
-
----
-
-## Outputs
-
-**Reproducibility inputs (frozen; regenerate only deliberately):**
-- `validation/artifacts/rho_star_<system>_K<K>.yaml` — calibrated thresholds `ρ*` by
-  scale, with confidence intervals and provenance (B, α, seed, surrogate).
-- `validation/artifacts/metrics_DENV.yaml` — empirical-vs-predicted operating points and
-  the `ℓ_min` grid.
-- `validation/artifacts/method_comparison_DENV.yaml` — over-resolution comparison, naive
-  coverage, and Benjamini–Hochberg results.
-- `validation/artifacts/sweep_results.jsonl` (+ `_manifest.json`) — the frozen per-cell
-  results store with a SHA-256 `results_digest`.
-
-**Publication outputs (regenerable from the frozen inputs):**
-- `validation/artifacts/publication/figures/*.png` — calibration curve, empirical-vs-
-  predicted FPR/power, coverage, `ℓ_min` heatmap, over-resolution comparison,
-  hierarchy-sensitivity panel, profile schematic.
-- `validation/artifacts/publication/tables/*.md` — five manuscript tables.
-- `VALIDATION_AND_BENCHMARKING.md` — the assembled validation report.
-
----
-
-## Validation status
-
-**Production**
-- ✓ M0 (v5-parity foundation) · ✓ M1 · ✓ M2 · ✓ M3 · ✓ M4 · ✓ M5 · ✓ M6
-
-**Validation**
-- ✓ V0 · ✓ V1 · ✓ V2 · ✓ V3 · ✓ V4 · ✓ V5 · ✓ V6 · ✓ V7 · ✓ V8
-
-**Regression (current):**
-- Production: **133 passed, 2 skipped** (135 collected).
-- Validation: **269 passed**.
-- `src/mechanism/_legacy.py` md5 = `2005822cc5b2a8cc3a6b5e58425043eb` (invariant).
-- Production version `0.6.0+m6`; validation version `0.9.0+v8`.
-
-**Headline empirical results** (synthetic systems, at the calibrated `ρ*`): false-positive
-rate controlled at `α`; empirical power tracks the closed-form prediction at
-moderate/high SNR; and — the central consequence — STRIDE's over-resolution rate on
-planted nulls is `0.000` versus `1.000` (single-trajectory) and `0.48–0.73` (naive
-ensemble), demonstrated on the DENV anchor and **two additional systems with distinct
-hierarchies** (paired McNemar `p < 6e-17`; all comparisons survive Benjamini–Hochberg).
-
----
-
-## Reproducibility
-
-- **Deterministic seeds.** All randomness flows through `validation/_seed.py`, with
-  disjoint seed streams for calibration and evaluation.
-- **Frozen artifacts.** Calibration thresholds and the sweep results store are persisted
-  with provenance; a SHA-256 digest pins the store
-  (`1993d3e731d067c9d1333293489851b3bdf13d6902c014c34ea517dd7af88c9f`).
-- **Regenerate everything.** A sweep re-run with the same grid/seed yields a
-  **byte-identical** store; the report rebuilds identically:
-  ```bash
-  python -m validation report --out /tmp/verify
-  ```
-- **Separation is tested.** `mechanism` never imports `validation`; only
-  `validation/adapters.py` imports `mechanism`; `import validation` is mechanism-free.
-
----
-
-## Documentation
-
-- [`MASTER_HANDOFF.md`](MASTER_HANDOFF.md) — complete technical history and rationale.
-- [`CURRENT_PROJECT_STATE.md`](CURRENT_PROJECT_STATE.md) — exact state of the repository.
-- [`USER_GUIDE.md`](USER_GUIDE.md) — how to install, run, calibrate, sweep, and report.
-- [`DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md) — architecture, boundaries, and how to extend.
-- [`SCIENTIFIC_VALIDATION.md`](SCIENTIFIC_VALIDATION.md) — what was validated and measured.
-- [`NEXT_STEPS.md`](NEXT_STEPS.md) — what to do next (including real-data application).
-- [`MATHEMATICAL_SPECIFICATION.md`](MATHEMATICAL_SPECIFICATION.md) — the method.
-- [`IMPLEMENTATION_ROADMAP.md`](IMPLEMENTATION_ROADMAP.md) · [`VALIDATION_ROADMAP.md`](VALIDATION_ROADMAP.md) — roadmaps.
-
----
-
-## Current status
-
-The implementation (M0–M6) and the validation framework (V0–V8) are **complete**. The
-method is calibrated and its operating characteristics are characterized on synthetic
-systems with known ground truth, including ≥ 2 systems beyond DENV.
-
-**What remains** is scientific application and open research, not framework construction:
-- **Application to biological datasets** — running STRIDE on real DENV1–4 replicate
-  trajectories under the claimed operating range (`K ≥ 5`) and a calibrated `ρ*`. This is
-  the next required step; see [`NEXT_STEPS.md`](NEXT_STEPS.md).
-- **Future research** — reconciling the low-SNR power model, real-null calibration,
-  alternative effect fields, and a biological-generality study.
-- **Optional extensions** — a full IDR baseline, richer reporting (full ROC/PR curves,
-  live `Π` profiles), and larger sweeps.
-
-**Scope, honestly stated:** the validation establishes operating characteristics on
-*synthetic* systems. Synthetic ground truth is the correct instrument for this — `ℓ*` is
-unknowable on real data — but biological generality is a separate, later step and is not
-claimed here.
-
----
-
-## Citation
-
-A methods paper is in preparation. Until then, please cite the repository:
-
-```bibtex
-@software{stride,
-  title  = {STRIDE: reproducibility-gated mechanistic inference from replicate
-            molecular-dynamics simulations},
-  author = {The STRIDE authors},
-  year   = {2026},
-  note   = {Version: production 0.6.0+m6, validation 0.9.0+v8},
-  url    = {<repository URL>}
-}
-```
-
-*(Placeholder — update with authors, title, venue, and DOI on publication.)*
-
----
+- `src/mechanism/`: production implementation.
+- `validation/`: synthetic validation and the V9A characterization.
+- `tests/`: production and integration tests.
+- `validation/tests/`: validation tests.
+- `HIERARCHY.md`: hierarchy configuration notes.
+- `VALIDATION_AND_BENCHMARKING.md`: historical validation record; interpret it
+  within the bounded scope stated above.
+- `MIGRATION_NOTES.md`: compatibility notes.
 
 ## License
 
-MIT License © 2026 the authors. See [`LICENSE`](LICENSE) for the full text.
+The package metadata identifies the project as MIT-licensed. The repository's
+short `LICENSE` placeholder still requires replacement with the complete license
+text before release; this README does not represent that release debt as closed.
