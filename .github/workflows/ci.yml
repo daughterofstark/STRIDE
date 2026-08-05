@@ -15,10 +15,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev]"
-      - name: Lint production and Phase 3 validation entry points
+      - name: Lint manuscript-supported estimator and validation entry points
         run: >-
-          ruff check src validation/v9a_frozen_design.py
-          validation/tests/test_v9a_frozen_design.py tests/test_readme_links.py
+          ruff check
+          src/mechanism/statistics/reproducibility.py
+          src/mechanism/statistics/varcomp.py
+          validation/v9a_frozen_design.py
+          validation/tests/test_v9a_frozen_design.py
+          tests/test_readme_links.py
       - name: Run core tests (golden skips reported explicitly)
         run: pytest tests -q -rs
       - name: Run complete validation suite
