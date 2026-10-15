@@ -124,6 +124,4 @@ and skip when their optional external fixtures are absent.
 
 ## License
 
-The package metadata identifies the project as MIT-licensed. The repository's
-short `LICENSE` placeholder still requires replacement with the complete license
-text before release; this README does not represent that release debt as closed.
+MIT. See `LICENSE`.

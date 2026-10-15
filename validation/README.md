@@ -1,4 +1,12 @@
-# `validation/` — STRIDE validation & benchmarking framework (Phase 2)
+# `validation/` — STRIDE validation and characterization framework
+
+> **Scope.** This directory contains several synthetic studies developed over the
+> lifetime of STRIDE. Their guarantees apply only to their registered synthetic
+> designs. They do not calibrate the provisional `rho = 0.5` reference used in the
+> frozen descriptive application, establish a generally valid scale-selection
+> rule, or validate post-selection Wald/BH inference. V9A is the current
+> frozen-design operator characterization; it evaluates support-size behavior and
+> registered support aliases without modelling the upstream molecular simulation.
 
 This package is **completely separate** from the production `mechanism` package and
 implements the validation study described in `../VALIDATION_ROADMAP.md` (milestones
@@ -145,7 +153,7 @@ values of the approximations. The `rho` formula is **not** duplicated: a test pi
 |---|---|
 | `surrogates.py` | **pure** null-surrogate generators (imports no `mechanism`): `permute_replicate_labels` (field-level; the canonical scheme), `phase_randomize` / `phase_randomize_pairs` (series-level; preserve the power spectrum, hence `tau_int`/`N_eff`), `power_spectrum` |
 | `calibrate.py` | surrogate-based `rho*` calibration reaching production **only** via the `adapters` bridge (lazy import, so `import validation` stays production-free): `calibrate_rho_star` (canonical, ensemble surrogate null), `ensemble_surrogate_null_rho`, `surrogate_null_rho`, `generator_null_rho` (independent validation), `empirical_fpr`, `write_rho_star_yaml` / `load_rho_star_yaml`, `CalibrationResult` |
-| `artifacts/rho_star_DENV_K{3,5,10}.yaml` | provenanced calibrated thresholds (data, not code), keyed by (system, K, T, alpha, B, seed) |
+| `artifacts/rho_star_DENV_K{3,5,10}.yaml` | historical synthetic-design calibration artifacts (data, not production cutoffs), keyed by (system, K, T, alpha, B, seed) |
 | `tests/test_surrogates.py`, `tests/test_calibrate.py` | surrogate properties; out-of-sample FPR control on disjoint beta=0 draws; determinism; artifact round-trip |
 
 ### Canonical calibration (surrogate-based) — [SPEC Part V step 11]
