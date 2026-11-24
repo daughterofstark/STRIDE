@@ -95,11 +95,6 @@ def _write_aligned_protein(config: WorkflowConfig, run: RunInput, run_dir: Path)
     mda, align = _load_mdanalysis()
     aligned_path = run_dir / "aligned_protein.pdb"
     universe = _universe_for_run(mda, run)
-    if config.preprocessing.alignment_reference == "topology":
-        reference = mda.Universe(str(run.topology))
-    else:
-        reference = _universe_for_run(mda, run)
-        reference.trajectory[0]
     protein = universe.select_atoms(config.preprocessing.protein_selection)
     if not protein.n_atoms:
         raise WorkflowExecutionError(
@@ -112,9 +107,23 @@ def _write_aligned_protein(config: WorkflowConfig, run: RunInput, run_dir: Path)
             f"{config.preprocessing.alignment_selection!r}"
         )
 
+    if config.preprocessing.alignment_mode == "per_frame":
+        if config.preprocessing.alignment_reference == "topology":
+            reference = mda.Universe(str(run.topology))
+        else:
+            reference = _universe_for_run(mda, run)
+            reference.trajectory[0]
+    elif config.preprocessing.alignment_mode == "use_supplied_fitted_trajectory":
+        reference = None
+    else:  # pragma: no cover - schema validation prevents this branch
+        raise WorkflowExecutionError(
+            f"unsupported alignment mode: {config.preprocessing.alignment_mode}"
+        )
+
     with mda.Writer(str(aligned_path), n_atoms=protein.n_atoms, multiframe=True) as writer:
         for _ in universe.trajectory[:: config.preprocessing.frame_stride]:
-            align.alignto(universe, reference, select=config.preprocessing.alignment_selection)
+            if reference is not None:
+                align.alignto(universe, reference, select=config.preprocessing.alignment_selection)
             writer.write(protein)
     if not aligned_path.is_file():  # pragma: no cover - MDAnalysis contract guard
         raise WorkflowExecutionError(f"run '{run.identifier}' did not produce aligned coordinates")
@@ -344,15 +353,25 @@ def execute_workflow(config: WorkflowConfig, output_dir: str | Path) -> tuple[Ru
         raise WorkflowExecutionError(f"output directory must not already exist: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent))
+    moved = False
     try:
         provenance_path = write_manifest(build_manifest(config, validation), staging)
         completed = tuple(_execute_run(config, run, staging) for run in config.runs)
+        staging.rename(destination)
+        moved = True
+
+        # POVME must run against staging paths, but the retained input should be
+        # directly reusable and therefore name the final output directory.
+        for result in completed:
+            ini_path = destination / result.effects_path.relative_to(staging).parent / "povme.ini"
+            ini_path.write_text(ini_path.read_text().replace(str(staging), str(destination)))
+
         summary = {
             "manifest_version": 2,
             "purpose": "trajectory_to_per_run_item_effects",
             "system_id": config.system_id,
             "workflow_config_sha256": sha256(config.source_path),
-            "workflow_provenance_sha256": sha256(provenance_path),
+            "workflow_provenance_sha256": sha256(destination / provenance_path.name),
             "reference_selection": config.pocket.reference_selection,
             "reference_center_mode": config.pocket.reference_center_mode,
             "reference_time_mode_requested": config.pocket.reference_time_mode,
@@ -361,13 +380,17 @@ def execute_workflow(config: WorkflowConfig, output_dir: str | Path) -> tuple[Ru
                 {
                     "id": result.run_id,
                     "effects_path": str(result.effects_path.relative_to(staging)),
-                    "effects_sha256": sha256(result.effects_path),
+                    "effects_sha256": sha256(destination / result.effects_path.relative_to(staging)),
                     "volume_path": str(result.volume_path.relative_to(staging)),
-                    "volume_sha256": sha256(result.volume_path),
+                    "volume_sha256": sha256(destination / result.volume_path.relative_to(staging)),
                     "aligned_protein_path": str((result.effects_path.parent / "aligned_protein.pdb").relative_to(staging)),
-                    "aligned_protein_sha256": sha256(result.effects_path.parent / "aligned_protein.pdb"),
+                    "aligned_protein_sha256": sha256(
+                        destination / result.effects_path.relative_to(staging).parent / "aligned_protein.pdb"
+                    ),
                     "povme_input_path": str((result.effects_path.parent / "povme.ini").relative_to(staging)),
-                    "povme_input_sha256": sha256(result.effects_path.parent / "povme.ini"),
+                    "povme_input_sha256": sha256(
+                        destination / result.effects_path.relative_to(staging).parent / "povme.ini"
+                    ),
                     "frame_count": result.frame_count,
                     "reference_time_mode_effective": result.reference_time_mode_effective,
                     "reference_drift_mean_angstrom": result.reference_drift_mean_angstrom,
@@ -377,19 +400,18 @@ def execute_workflow(config: WorkflowConfig, output_dir: str | Path) -> tuple[Ru
             ],
         }
         for run_record in summary["runs"]:
-            run_dir = staging / "runs" / str(run_record["id"])
+            run_dir = destination / "runs" / str(run_record["id"])
             points_files = sorted(run_dir.glob("povme_points_*.npy"))
             if len(points_files) != 1:  # pragma: no cover - executor contract guard
                 raise WorkflowExecutionError(f"expected one POVME point file for run {run_record['id']}")
-            run_record["povme_points_path"] = str(points_files[0].relative_to(staging))
+            run_record["povme_points_path"] = str(points_files[0].relative_to(destination))
             run_record["povme_points_sha256"] = sha256(points_files[0])
             for log_name in ("povme.stdout.log", "povme.stderr.log"):
                 log_path = run_dir / log_name
                 run_record[f"{log_name}_sha256"] = sha256(log_path)
-        (staging / "workflow_execution.json").write_text(
+        (destination / "workflow_execution.json").write_text(
             json.dumps(summary, indent=2, sort_keys=True) + "\n"
         )
-        staging.rename(destination)
         return tuple(
             RunExecution(
                 result.run_id,
@@ -403,5 +425,5 @@ def execute_workflow(config: WorkflowConfig, output_dir: str | Path) -> tuple[Ru
             for result in completed
         )
     except Exception:
-        shutil.rmtree(staging, ignore_errors=True)
+        shutil.rmtree(destination if moved else staging, ignore_errors=True)
         raise

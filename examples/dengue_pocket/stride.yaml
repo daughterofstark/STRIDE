@@ -18,6 +18,9 @@ runs:
 preprocessing:
   protein_selection: protein
   alignment_selection: backbone
+  # A new study uses the default `per_frame` alignment. This compatibility
+  # example deliberately consumes an already fitted historical trajectory.
+  alignment_mode: use_supplied_fitted_trajectory
   # "topology" matches the historical route; choose "trajectory_first_frame"
   # only for a newly declared workflow with that intended reference.
   alignment_reference: topology

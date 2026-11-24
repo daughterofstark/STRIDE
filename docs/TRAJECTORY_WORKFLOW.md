@@ -26,6 +26,13 @@ run:
 - `preprocessing.alignment_reference`: `topology` or `trajectory_first_frame`.
   The topology option matches the historical DENV route. The first-frame option
   is available for a separately declared workflow.
+- `preprocessing.alignment_mode`: `per_frame` (the default) applies the
+  declared alignment to each selected frame. `use_supplied_fitted_trajectory`
+  writes the selected coordinates as supplied and is reserved for a trajectory
+  whose upstream fitting is itself part of the declared input contract. The
+  DENV compatibility example uses the latter because the archived v5
+  `aligned_clean.pdb` was verified to equal every twentieth frame of
+  `36-md-fit.xtc` to PDB precision; it did not carry a second alignment.
 - `pocket.reference.center_mode`: `atom_group_com` or `mean_residue_com`.
   It defines how the configured reference centre is measured in each frame.
 - `pocket.reference.time_mode`: `fixed` (the default), `dynamic`, or

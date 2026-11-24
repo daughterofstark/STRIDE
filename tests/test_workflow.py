@@ -67,6 +67,7 @@ def test_load_and_validate_explicit_workflow(tmp_path):
     assert [run.identifier for run in config.runs] == ["run_1", "run_2", "run_3"]
     assert validate_workflow_config(config).valid
     assert config.preprocessing.alignment_reference == "topology"
+    assert config.preprocessing.alignment_mode == "per_frame"
     assert config.pocket.reference_center_mode == "atom_group_com"
     assert config.pocket.grid_spacing_angstrom == 1.0
     assert config.uncertainty.bootstrap_replicates == 1000
@@ -189,6 +190,20 @@ def test_reference_time_modes_keep_the_historical_switch_explicit():
     assert _effective_reference_time_mode("auto_drift", 1.51, 1.5) == "dynamic"
 
 
+def test_historical_fitted_trajectory_mode_is_explicit(tmp_path):
+    config_path = _write_config(tmp_path)
+    config_path.write_text(
+        config_path.read_text().replace(
+            "  alignment_selection: backbone\n",
+            "  alignment_selection: backbone\n"
+            "  alignment_mode: use_supplied_fitted_trajectory\n",
+        )
+    )
+    config = load_workflow_config(config_path)
+    assert config.preprocessing.alignment_mode == "use_supplied_fitted_trajectory"
+    assert validate_workflow_config(config).valid
+
+
 def _pdb_atom(serial, residue, x, y, z):
     return (
         f"ATOM  {serial:5d}  CA  ALA A{residue:4d}    "
@@ -293,6 +308,34 @@ def test_executor_writes_per_run_effect_fields_from_declared_inputs(tmp_path):
     assert {row["reference_time_mode_effective"] for row in summary["runs"]} == {"fixed"}
     assert all(row["reference_drift_max_angstrom"] >= 0 for row in summary["runs"])
     assert (tmp_path / "run-output" / "workflow_provenance.json").is_file()
+    for result in completed:
+        povme_input = result.effects_path.parent / "povme.ini"
+        assert str(tmp_path / "run-output") in povme_input.read_text()
+        assert ".run-output.tmp-" not in povme_input.read_text()
+
+
+def test_supplied_fitted_trajectory_mode_preserves_declared_coordinates(tmp_path):
+    config_path = _write_execution_fixture(tmp_path)
+    config_path.write_text(
+        config_path.read_text().replace(
+            "  alignment_selection: name CA\n",
+            "  alignment_selection: name CA\n"
+            "  alignment_mode: use_supplied_fitted_trajectory\n",
+        )
+    )
+    config = load_workflow_config(config_path)
+    completed = execute_workflow(config, tmp_path / "supplied-output")
+
+    import MDAnalysis as mda
+
+    original = mda.Universe(str(tmp_path / "inputs" / "topology.pdb"), str(tmp_path / "inputs" / "trajectory.pdb"))
+    written = mda.Universe(str(completed[0].effects_path.parent / "aligned_protein.pdb"))
+    original.trajectory[0]
+    written.trajectory[0]
+    assert np.allclose(original.atoms.positions, written.atoms.positions, atol=1e-3)
+    original.trajectory[-1]
+    written.trajectory[-1]
+    assert np.allclose(original.atoms.positions, written.atoms.positions, atol=1e-3)
 
 
 def test_cli_run_executes_declared_workflow(tmp_path):
