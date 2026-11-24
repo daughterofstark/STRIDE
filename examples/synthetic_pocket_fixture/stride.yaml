@@ -1,0 +1,48 @@
+workflow_version: 1
+
+project:
+  system_id: synthetic-pocket-fixture
+
+runs:
+  - id: run_1
+    topology: topology.pdb
+    trajectory: trajectory.pdb
+  - id: run_2
+    topology: topology.pdb
+    trajectory: trajectory.pdb
+
+preprocessing:
+  protein_selection: all
+  alignment_selection: name CA
+  alignment_reference: topology
+  frame_stride: 1
+  frame_interval_ps: 10.0
+
+pocket:
+  method: povme
+  povme_executable: povme_stub.py
+  radius_angstrom: 4.0
+  grid_spacing_angstrom: 1.0
+  distance_cutoff_angstrom: 1.09
+  num_processors: 1
+  reference:
+    residues: ["A:1"]
+    selection: "resid 1 and name CA"
+    center_mode: atom_group_com
+
+uncertainty:
+  bootstrap_method: circular
+  bootstrap_replicates: 1000
+  bootstrap_alpha: 0.05
+  bootstrap_seed: 42
+
+aggregation:
+  rho_star: 0.5
+  alpha: 0.05
+  coherence_threshold: 0.6
+
+hierarchy_config: hierarchy.yaml
+
+downstream_export:
+  dataset_id: synthetic
+  coordinate_map: coordinates.csv

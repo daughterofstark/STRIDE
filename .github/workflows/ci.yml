@@ -33,3 +33,40 @@ jobs:
         run: >-
           pytest validation/tests/test_v9a_frozen_design.py::test_execute_end_to_end_on_committed_snapshot
           -q
+
+  workflow-contract:
+    name: Workflow contract (Python 3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: daughterofstark/STRIDE_downstream
+          ref: 2b3eae3391716bed5d2e1e77792cd152074029b8
+          path: STRIDE_downstream
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]" pyarrow
+      - run: python -m pip install -e ./STRIDE_downstream
+      - name: Lint public workflow modules
+        run: >-
+          ruff check
+          src/mechanism/workflow
+          tests/test_workflow.py
+          examples/synthetic_pocket_fixture/povme_stub.py
+      - name: Test public workflow failure paths
+        run: pytest tests/test_workflow.py -q
+      - name: Run the committed trajectory-to-summary fixture
+        run: |
+          fixture=examples/synthetic_pocket_fixture
+          out="$RUNNER_TEMP/stride-workflow"
+          stride validate --config "$fixture/stride.yaml"
+          stride run --config "$fixture/stride.yaml" --output "$out/effects"
+          stride summarize --config "$fixture/stride.yaml" \
+            --run-effects "$out/effects" --output "$out/dataset"
+          python -m stride_analysis --data-root "$out/dataset" \
+            --output-dir "$out/canonical"
+          test -f "$out/canonical/replicate_table.parquet"
+          test -f "$out/canonical/stride_table.parquet"

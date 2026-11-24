@@ -1,0 +1,59 @@
+# Example only. Supply real topology/trajectory files before validation or analysis.
+workflow_version: 1
+
+project:
+  system_id: DENV2_NS2B_NS3
+
+runs:
+  - id: run_1
+    topology: inputs/run_1/protein.gro
+    trajectory: inputs/run_1/trajectory.xtc
+  - id: run_2
+    topology: inputs/run_2/protein.gro
+    trajectory: inputs/run_2/trajectory.xtc
+  - id: run_3
+    topology: inputs/run_3/protein.gro
+    trajectory: inputs/run_3/trajectory.xtc
+
+preprocessing:
+  protein_selection: protein
+  alignment_selection: backbone
+  # "topology" matches the historical route; choose "trajectory_first_frame"
+  # only for a newly declared workflow with that intended reference.
+  alignment_reference: topology
+  frame_stride: 20
+  frame_interval_ps: 10.0
+
+pocket:
+  method: povme
+  # Pass a real POVME2.py path here or use an environment-specific copy.
+  povme_executable: /path/to/POVME2.py
+  radius_angstrom: 14.0
+  grid_spacing_angstrom: 1.0
+  distance_cutoff_angstrom: 1.09
+  num_processors: 1
+  reference:
+    residues: ["NS3:51", "NS3:75", "NS3:135"]
+    # Use residue identifiers and chain metadata from the supplied topology.
+    selection: "protein and resid 51 75 135"
+    # Matches the historical triad definition: mean of the three residue COMs.
+    center_mode: mean_residue_com
+    # Historical compatibility: the POVME sphere stays fixed at frame 0, while
+    # residue distances use a moving triad centre when its maximum drift exceeds
+    # this declared threshold. New projects should normally use `fixed`.
+    time_mode: auto_drift
+    drift_threshold_angstrom: 1.5
+
+uncertainty:
+  bootstrap_method: circular
+  bootstrap_replicates: 1000
+  bootstrap_alpha: 0.05
+  bootstrap_seed: 42
+
+aggregation:
+  # These remain provisional settings of the existing STRIDE aggregator.
+  rho_star: 0.5
+  alpha: 0.05
+  coherence_threshold: 0.6
+
+hierarchy_config: ../../src/mechanism/configs/denv_hierarchy.yaml

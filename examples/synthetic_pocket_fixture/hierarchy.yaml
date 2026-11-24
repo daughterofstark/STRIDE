@@ -1,0 +1,13 @@
+name: synthetic-pocket
+complex_name: synthetic-complex
+protein_name: synthetic-protein
+levels: [complex, protein, chain, domain, motif, secondary_structure, residue]
+numbering:
+  scheme: identity
+chains:
+  - {name: A, canonical_range: [1, 3]}
+domains:
+  - {name: synthetic-group, chain: A, residues: [{range: [1, 3]}]}
+motifs: []
+secondary_structure:
+  method: none
