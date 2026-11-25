@@ -69,6 +69,13 @@ volume-table hash still matches. They refuse missing, tampered, or
 configuration-mismatched run outputs. Their own output directories are written
 transactionally.
 
+If a long `stride run` is interrupted, retain its `.run-effects.tmp-*` staging
+directory and use `stride resume --staging <directory>` with the same YAML and
+a still-unused final output directory. Resume verifies the saved provenance and
+configuration hash, retains only complete run directories, and rebuilds any
+incomplete run from its declared inputs. Run it inside a session manager such
+as `tmux` for long calculations; do not manually copy partial run files.
+
 ## Scope
 
 The synthetic fixture proves command, file-layout, provenance, and downstream

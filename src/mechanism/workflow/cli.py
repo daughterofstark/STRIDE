@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 
 from .downstream import DownstreamExportError, export_downstream_layout
-from .executor import WorkflowExecutionError, execute_workflow
+from .executor import WorkflowExecutionError, execute_workflow, resume_workflow
 from .provenance import build_manifest, write_manifest
 from .schema import WorkflowConfigError, load_workflow_config
 from .summary import WorkflowSummaryError, summarize_to_downstream_dataset
@@ -18,16 +18,22 @@ def _parser() -> argparse.ArgumentParser:
         description="Validate and record explicit STRIDE trajectory-workflow inputs.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
-    for command in ("validate", "plan", "run", "export-downstream", "summarize"):
+    for command in ("validate", "plan", "run", "resume", "export-downstream", "summarize"):
         subparser = commands.add_parser(command)
         subparser.add_argument("--config", required=True, help="Path to a workflow YAML file")
-        if command in {"plan", "run", "export-downstream", "summarize"}:
+        if command in {"plan", "run", "resume", "export-downstream", "summarize"}:
             subparser.add_argument("--output", required=True, help="Output directory")
         if command in {"export-downstream", "summarize"}:
             subparser.add_argument(
                 "--run-effects",
                 required=True,
                 help="Directory previously written by 'stride run'",
+            )
+        if command == "resume":
+            subparser.add_argument(
+                "--staging",
+                required=True,
+                help="Interrupted staging directory created by 'stride run'",
             )
     return parser
 
@@ -62,6 +68,20 @@ def main(argv: list[str] | None = None) -> int:
             completed = execute_workflow(config, args.output)
         except WorkflowExecutionError as exc:
             print(f"EXECUTION ERROR: {exc}")
+            return 1
+        print(f"COMPLETE: {config.system_id} ({len(completed)} per-run effect fields)")
+        return 0
+
+    if args.command == "resume":
+        execution_validation = validate_workflow_config(config, require_povme=True)
+        if not execution_validation.valid:
+            for message in execution_validation.errors:
+                print(f"ERROR: {message}")
+            return 1
+        try:
+            completed = resume_workflow(config, args.staging, args.output)
+        except WorkflowExecutionError as exc:
+            print(f"RESUME ERROR: {exc}")
             return 1
         print(f"COMPLETE: {config.system_id} ({len(completed)} per-run effect fields)")
         return 0

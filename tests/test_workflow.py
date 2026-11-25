@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,7 @@ from mechanism.workflow.executor import (
     _effective_reference_time_mode,
     _reference_center,
     execute_workflow,
+    resume_workflow,
 )
 from mechanism.workflow.provenance import sha256
 from mechanism.workflow.summary import summarize_to_downstream_dataset
@@ -336,6 +338,29 @@ def test_supplied_fitted_trajectory_mode_preserves_declared_coordinates(tmp_path
     original.trajectory[-1]
     written.trajectory[-1]
     assert np.allclose(original.atoms.positions, written.atoms.positions, atol=1e-3)
+
+
+def test_resume_reuses_complete_runs_and_rebuilds_only_incomplete_run(tmp_path):
+    config = load_workflow_config(_write_execution_fixture(tmp_path))
+    complete = tmp_path / "complete"
+    execute_workflow(config, complete)
+    staged = tmp_path / ".run-effects.tmp-interrupted"
+    complete.rename(staged)
+    first_effects = staged / "runs" / "run_1" / "item_effects.csv"
+    first_effects_hash = sha256(first_effects)
+    shutil.rmtree(staged / "runs" / "run_2")
+    partial = staged / "runs" / "run_2"
+    partial.mkdir()
+    (partial / "povme_output.txt").write_text("Further processing frame 42\n")
+
+    destination = tmp_path / "resumed"
+    completed = resume_workflow(config, staged, destination)
+
+    assert [result.run_id for result in completed] == ["run_1", "run_2"]
+    assert sha256(destination / "runs" / "run_1" / "item_effects.csv") == first_effects_hash
+    summary = json.loads((destination / "workflow_execution.json").read_text())
+    assert summary["resumed_run_ids"] == ["run_1"]
+    assert (destination / "runs" / "run_2" / "item_effects.csv").is_file()
 
 
 def test_cli_run_executes_declared_workflow(tmp_path):

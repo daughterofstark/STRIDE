@@ -337,29 +337,61 @@ def _execute_run(config: WorkflowConfig, run: RunInput, output_dir: Path) -> Run
     )
 
 
-def execute_workflow(config: WorkflowConfig, output_dir: str | Path) -> tuple[RunExecution, ...]:
-    """Run the declared POVME-to-per-residue effect workflow.
+def _completed_run_from_staging(
+    config: WorkflowConfig, run_dir: Path, run_id: str
+) -> RunExecution | None:
+    """Return a reusable run only when its complete staged contract exists."""
 
-    Results are intentionally limited to one effect field per run.  They can
-    then be passed to STRIDE's replicate-aware processing with an explicit
-    downstream data contract.
-    """
-
-    validation = validate_workflow_config(config, require_povme=True)
-    if not validation.valid:
-        raise WorkflowExecutionError("workflow configuration is invalid: " + "; ".join(validation.errors))
-    destination = Path(output_dir).expanduser().resolve()
-    if destination.exists():
-        raise WorkflowExecutionError(f"output directory must not already exist: {destination}")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent))
-    moved = False
+    effects_path = run_dir / "item_effects.csv"
+    volume_path = run_dir / "povme_volumes.tabbed.txt"
+    points_files = sorted(run_dir.glob("povme_points_*.npy"))
+    required = (
+        effects_path,
+        volume_path,
+        run_dir / "aligned_protein.pdb",
+        run_dir / "povme.ini",
+        run_dir / "povme.stdout.log",
+        run_dir / "povme.stderr.log",
+    )
+    if not all(path.is_file() for path in required) or len(points_files) != 1:
+        return None
     try:
-        provenance_path = write_manifest(build_manifest(config, validation), staging)
-        completed = tuple(_execute_run(config, run, staging) for run in config.runs)
-        staging.rename(destination)
-        moved = True
+        effects = pd.read_csv(effects_path)
+        required_columns = {"file_resid", "r", "theta_se", "theta_bootstrap_se"}
+        if effects.empty or not required_columns.issubset(effects.columns):
+            return None
+        residues, distances, effective_mode, mean_drift, max_drift = _residue_distance_matrix(
+            config, run_dir / "aligned_protein.pdb"
+        )
+        if len(effects) != len(residues):
+            return None
+        volumes = _load_volumes(volume_path, expected_frames=distances.shape[0])
+    except Exception:
+        return None
+    return RunExecution(
+        run_id,
+        effects_path,
+        volume_path,
+        int(volumes.size),
+        effective_mode,
+        mean_drift,
+        max_drift,
+    )
 
+
+def _finalize_execution(
+    config: WorkflowConfig,
+    staging: Path,
+    destination: Path,
+    completed: tuple[RunExecution, ...],
+    *,
+    resumed_run_ids: tuple[str, ...] = (),
+) -> tuple[RunExecution, ...]:
+    """Move complete staging output into place and write its final manifest."""
+
+    provenance_path = staging / "workflow_provenance.json"
+    staging.rename(destination)
+    try:
         # POVME must run against staging paths, but the retained input should be
         # directly reusable and therefore name the final output directory.
         for result in completed:
@@ -376,6 +408,7 @@ def execute_workflow(config: WorkflowConfig, output_dir: str | Path) -> tuple[Ru
             "reference_center_mode": config.pocket.reference_center_mode,
             "reference_time_mode_requested": config.pocket.reference_time_mode,
             "reference_drift_threshold_angstrom": config.pocket.reference_drift_threshold_angstrom,
+            "resumed_run_ids": list(resumed_run_ids),
             "runs": [
                 {
                     "id": result.run_id,
@@ -425,5 +458,76 @@ def execute_workflow(config: WorkflowConfig, output_dir: str | Path) -> tuple[Ru
             for result in completed
         )
     except Exception:
-        shutil.rmtree(destination if moved else staging, ignore_errors=True)
+        shutil.rmtree(destination, ignore_errors=True)
         raise
+
+
+def execute_workflow(config: WorkflowConfig, output_dir: str | Path) -> tuple[RunExecution, ...]:
+    """Run the declared POVME-to-per-residue effect workflow.
+
+    Results are intentionally limited to one effect field per run.  They can
+    then be passed to STRIDE's replicate-aware processing with an explicit
+    downstream data contract.
+    """
+
+    validation = validate_workflow_config(config, require_povme=True)
+    if not validation.valid:
+        raise WorkflowExecutionError("workflow configuration is invalid: " + "; ".join(validation.errors))
+    destination = Path(output_dir).expanduser().resolve()
+    if destination.exists():
+        raise WorkflowExecutionError(f"output directory must not already exist: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent))
+    try:
+        write_manifest(build_manifest(config, validation), staging)
+        completed = tuple(_execute_run(config, run, staging) for run in config.runs)
+        return _finalize_execution(config, staging, destination, completed)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
+def resume_workflow(
+    config: WorkflowConfig, staging_dir: str | Path, output_dir: str | Path
+) -> tuple[RunExecution, ...]:
+    """Resume an interrupted workflow after verifying its declared inputs."""
+
+    validation = validate_workflow_config(config, require_povme=True)
+    if not validation.valid:
+        raise WorkflowExecutionError("workflow configuration is invalid: " + "; ".join(validation.errors))
+    staging = Path(staging_dir).expanduser().resolve()
+    destination = Path(output_dir).expanduser().resolve()
+    if destination.exists():
+        raise WorkflowExecutionError(f"output directory must not already exist: {destination}")
+    provenance_path = staging / "workflow_provenance.json"
+    if not staging.is_dir() or not provenance_path.is_file():
+        raise WorkflowExecutionError("resume staging directory has no workflow_provenance.json")
+    try:
+        provenance = json.loads(provenance_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise WorkflowExecutionError("resume staging workflow_provenance.json is invalid JSON") from exc
+    if provenance.get("workflow") != config.canonical_dict() or provenance.get("files", {}).get(
+        "workflow_config", {}
+    ).get("sha256") != sha256(config.source_path):
+        raise WorkflowExecutionError("resume staging provenance does not match the supplied workflow configuration")
+
+    reused: list[RunExecution] = []
+    completed_by_id: dict[str, RunExecution] = {}
+    for run in config.runs:
+        run_dir = staging / "runs" / run.identifier
+        completed = _completed_run_from_staging(config, run_dir, run.identifier)
+        if completed is not None:
+            reused.append(completed)
+            completed_by_id[run.identifier] = completed
+            continue
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+        completed_by_id[run.identifier] = _execute_run(config, run, staging)
+    ordered = tuple(completed_by_id[run.identifier] for run in config.runs)
+    return _finalize_execution(
+        config,
+        staging,
+        destination,
+        ordered,
+        resumed_run_ids=tuple(result.run_id for result in reused),
+    )
