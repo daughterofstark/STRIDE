@@ -53,8 +53,12 @@ jobs:
       - name: Lint public workflow modules
         run: >-
           ruff check
+          --config pyproject.toml
+          --select E4,E7,E9,F,I,RUF022,BLE001
           src/mechanism/workflow
           tests/test_workflow.py
+          tests/test_real_povme_integration.py
+          examples/dengue_pocket/prepare_legacy_denv1_pilot.py
           examples/synthetic_pocket_fixture/povme_stub.py
       - name: Test public workflow failure paths
         run: pytest tests/test_workflow.py -q

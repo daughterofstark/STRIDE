@@ -1,7 +1,7 @@
 """POVME-format contract stub for CI; this is not the POVME package."""
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 
 def main() -> None:

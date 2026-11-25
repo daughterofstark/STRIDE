@@ -11,17 +11,20 @@ import pytest
 
 from mechanism.workflow.__main__ import main as module_main
 from mechanism.workflow.cli import main
-from mechanism.workflow.downstream import DownstreamExportError, export_downstream_layout
+from mechanism.workflow.downstream import (
+    DownstreamExportError,
+    export_downstream_layout,
+)
 from mechanism.workflow.executor import (
+    WorkflowExecutionError,
     _effective_reference_time_mode,
     _reference_center,
     execute_workflow,
     resume_workflow,
 )
-from mechanism.workflow.provenance import sha256
-from mechanism.workflow.summary import summarize_to_downstream_dataset
-from mechanism.workflow.provenance import build_manifest, write_manifest
+from mechanism.workflow.provenance import build_manifest, sha256, write_manifest
 from mechanism.workflow.schema import WorkflowConfigError, load_workflow_config
+from mechanism.workflow.summary import summarize_to_downstream_dataset
 from mechanism.workflow.validation import validate_workflow_config
 
 
@@ -90,6 +93,15 @@ def test_duplicate_run_identifiers_are_rejected(tmp_path):
     result = validate_workflow_config(load_workflow_config(config_path))
     assert not result.valid
     assert any("run identifiers must be unique: run_1" == message for message in result.errors)
+
+
+@pytest.mark.parametrize("identifier", ["..", "../outside", "nested/run", "nested\\run"])
+def test_run_identifiers_cannot_escape_output_directory(tmp_path, identifier):
+    path = _write_config(tmp_path)
+    path.write_text(path.read_text().replace("id: run_1", f"id: '{identifier}'"))
+    result = validate_workflow_config(load_workflow_config(path))
+    assert not result.valid
+    assert any("safe directory name" in error for error in result.errors)
 
 
 def test_ordered_trajectory_segments_are_accepted(tmp_path):
@@ -361,6 +373,7 @@ def test_resume_reuses_complete_runs_and_rebuilds_only_incomplete_run(tmp_path):
     summary = json.loads((destination / "workflow_execution.json").read_text())
     assert summary["resumed_run_ids"] == ["run_1"]
     assert (destination / "runs" / "run_2" / "item_effects.csv").is_file()
+    assert (destination / "interrupted_runs" / "run_2.1" / "povme_output.txt").is_file()
 
 
 def test_cli_run_executes_declared_workflow(tmp_path):
@@ -368,6 +381,46 @@ def test_cli_run_executes_declared_workflow(tmp_path):
     output = tmp_path / "cli-run-output"
     assert main(["run", "--config", str(config), "--output", str(output)]) == 0
     assert (output / "workflow_execution.json").is_file()
+
+
+def test_resume_rejects_modified_input_before_touching_staging(tmp_path):
+    config = load_workflow_config(_write_execution_fixture(tmp_path))
+    staged = tmp_path / "staged"
+    execute_workflow(config, staged)
+    saved = sha256(staged / "runs" / "run_1" / "item_effects.csv")
+    config.runs[0].topology.write_text("modified topology\n")
+    with pytest.raises(WorkflowExecutionError, match="input hashes differ"):
+        resume_workflow(config, staged, tmp_path / "resumed")
+    assert sha256(staged / "runs" / "run_1" / "item_effects.csv") == saved
+
+
+def test_resume_rejects_output_inside_staging(tmp_path):
+    config = load_workflow_config(_write_execution_fixture(tmp_path))
+    staged = tmp_path / "staged"
+    execute_workflow(config, staged)
+    with pytest.raises(WorkflowExecutionError, match="separate directories"):
+        resume_workflow(config, staged, staged / "nested-output")
+    assert (staged / "workflow_execution.json").is_file()
+
+
+def test_failed_run_retains_completed_staging_for_resume(tmp_path, monkeypatch):
+    from mechanism.workflow import executor
+
+    config = load_workflow_config(_write_execution_fixture(tmp_path))
+    original = executor._execute_run
+
+    def fail_second(config, run, output_dir):
+        if run.identifier == "run_2":
+            raise WorkflowExecutionError("forced interruption")
+        return original(config, run, output_dir)
+
+    monkeypatch.setattr(executor, "_execute_run", fail_second)
+    with pytest.raises(WorkflowExecutionError, match="forced interruption"):
+        execute_workflow(config, tmp_path / "interrupted")
+    staging = list(tmp_path.glob(".interrupted.tmp-*"))
+    assert len(staging) == 1
+    assert (staging[0] / "runs" / "run_1" / "item_effects.csv").is_file()
+    assert not (tmp_path / "interrupted").exists()
 
 
 def test_exporter_writes_downstream_level_1_layout_from_explicit_map(tmp_path):
@@ -416,7 +469,7 @@ def test_exporter_rejects_coordinate_label_that_is_not_a_canonical_key(tmp_path)
     execute_workflow(config, run_effects)
     try:
         export_downstream_layout(config, run_effects, tmp_path / "downstream-input")
-    except Exception as exc:
+    except DownstreamExportError as exc:
         assert "label must equal" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("invalid canonical label was exported")

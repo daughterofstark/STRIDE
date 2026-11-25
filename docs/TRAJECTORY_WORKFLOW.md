@@ -72,8 +72,10 @@ transactionally.
 If a long `stride run` is interrupted, retain its `.run-effects.tmp-*` staging
 directory and use `stride resume --staging <directory>` with the same YAML and
 a still-unused final output directory. Resume verifies the saved provenance and
-configuration hash, retains only complete run directories, and rebuilds any
-incomplete run from its declared inputs. Run it inside a session manager such
+configuration hash and all recorded source-file hashes, retains complete run
+directories, and rebuilds any incomplete run from its declared inputs. Partial
+run directories are preserved under `interrupted_runs/`. Failed executions
+retain their staging directory for inspection and resume. Run inside a session manager such
 as `tmux` for long calculations; do not manually copy partial run files.
 
 ## Scope

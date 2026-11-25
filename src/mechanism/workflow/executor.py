@@ -8,7 +8,6 @@ operation over the produced run-item effect fields.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -366,7 +365,7 @@ def _completed_run_from_staging(
         if len(effects) != len(residues):
             return None
         volumes = _load_volumes(volume_path, expected_frames=distances.shape[0])
-    except Exception:
+    except (OSError, ValueError, WorkflowExecutionError):
         return None
     return RunExecution(
         run_id,
@@ -458,7 +457,7 @@ def _finalize_execution(
             for result in completed
         )
     except Exception:
-        shutil.rmtree(destination, ignore_errors=True)
+        destination.rename(staging)
         raise
 
 
@@ -480,10 +479,15 @@ def execute_workflow(config: WorkflowConfig, output_dir: str | Path) -> tuple[Ru
     staging = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent))
     try:
         write_manifest(build_manifest(config, validation), staging)
-        completed = tuple(_execute_run(config, run, staging) for run in config.runs)
+        results = []
+        for run in config.runs:
+            print(f"START: {run.identifier}; staging: {staging}", flush=True)
+            results.append(_execute_run(config, run, staging))
+            print(f"FINISHED: {run.identifier}", flush=True)
+        completed = tuple(results)
         return _finalize_execution(config, staging, destination, completed)
     except Exception:
-        shutil.rmtree(staging, ignore_errors=True)
+        print(f"Interrupted output retained for inspection/resume: {staging}", flush=True)
         raise
 
 
@@ -500,6 +504,8 @@ def resume_workflow(
     if destination.exists():
         raise WorkflowExecutionError(f"output directory must not already exist: {destination}")
     provenance_path = staging / "workflow_provenance.json"
+    if staging == destination or staging in destination.parents or destination in staging.parents:
+        raise WorkflowExecutionError("resume staging and output must be separate directories")
     if not staging.is_dir() or not provenance_path.is_file():
         raise WorkflowExecutionError("resume staging directory has no workflow_provenance.json")
     try:
@@ -511,18 +517,33 @@ def resume_workflow(
     ).get("sha256") != sha256(config.source_path):
         raise WorkflowExecutionError("resume staging provenance does not match the supplied workflow configuration")
 
+    current_manifest = build_manifest(config, validation)
+    if provenance.get("files") != current_manifest["files"]:
+        raise WorkflowExecutionError("resume input hashes differ from the original execution")
+
     reused: list[RunExecution] = []
     completed_by_id: dict[str, RunExecution] = {}
     for run in config.runs:
         run_dir = staging / "runs" / run.identifier
         completed = _completed_run_from_staging(config, run_dir, run.identifier)
         if completed is not None:
+            print(f"REUSE: {run.identifier}", flush=True)
             reused.append(completed)
             completed_by_id[run.identifier] = completed
             continue
         if run_dir.exists():
-            shutil.rmtree(run_dir)
+            archive_root = staging / "interrupted_runs"
+            archive_root.mkdir(exist_ok=True)
+            index = 1
+            archive = archive_root / f"{run.identifier}.{index}"
+            while archive.exists():
+                index += 1
+                archive = archive_root / f"{run.identifier}.{index}"
+            run_dir.rename(archive)
+            print(f"Partial output preserved: {archive}", flush=True)
+        print(f"START: {run.identifier}", flush=True)
         completed_by_id[run.identifier] = _execute_run(config, run, staging)
+        print(f"FINISHED: {run.identifier}", flush=True)
     ordered = tuple(completed_by_id[run.identifier] for run in config.runs)
     return _finalize_execution(
         config,

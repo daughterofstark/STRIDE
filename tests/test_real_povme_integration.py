@@ -17,7 +17,6 @@ from mechanism.workflow.executor import execute_workflow
 from mechanism.workflow.provenance import sha256
 from mechanism.workflow.schema import load_workflow_config
 
-
 pytestmark = pytest.mark.real_povme
 
 

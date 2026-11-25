@@ -13,7 +13,6 @@ import argparse
 import csv
 from pathlib import Path
 
-
 RUNS = ("1st_run", "2nd_run", "3rd_run")
 TRIAD_CANONICAL_IDS = (51, 75, 135)
 

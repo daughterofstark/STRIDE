@@ -29,6 +29,9 @@ def validate_workflow_config(config: WorkflowConfig, *, require_povme: bool = Fa
     errors: list[str] = []
     warnings: list[str] = []
     identifiers = [run.identifier for run in config.runs]
+    for identifier in identifiers:
+        if identifier in {".", ".."} or "/" in identifier or "\\" in identifier:
+            errors.append(f"run identifier must be a single safe directory name: {identifier!r}")
     duplicate_ids = sorted({identifier for identifier in identifiers if identifiers.count(identifier) > 1})
     if duplicate_ids:
         errors.append(f"run identifiers must be unique: {', '.join(duplicate_ids)}")
