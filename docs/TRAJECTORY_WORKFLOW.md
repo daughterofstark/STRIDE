@@ -20,6 +20,14 @@ given a later chain-aware input contract before it is used with this workflow.
 
 ## Explicit choices
 
+For GRO topologies containing negative residue IDs followed by zero, MDAnalysis
+may interpret zero as five-digit numbering rollover and add 100,000 to later
+IDs. `preprocessing.residue_numbering: raw_gro` explicitly preserves the raw
+five-column GRO IDs in memory before selections and coordinate export. It does
+not change coordinates or files. This is used by the historical dengue pilot
+helper; the general default remains `parsed`. Raw-ID collisions are not resolved
+by this option: selected protein residue IDs must still be globally unique.
+
 The following values are recorded in `workflow_provenance.json` and control a
 run:
 

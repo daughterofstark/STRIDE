@@ -90,10 +90,39 @@ def _universe_for_run(mda, run: RunInput):
     return mda.Universe(str(run.topology), coordinates)
 
 
+def _apply_residue_numbering(universe, topology: Path, mode: str) -> None:
+    """Restore declared GRO identifiers without changing coordinates or atom order."""
+
+    if mode == "parsed":
+        return
+    if mode != "raw_gro" or topology.suffix.lower() != ".gro":
+        raise WorkflowExecutionError("raw_gro residue numbering requires a GRO topology")
+    try:
+        with topology.open() as handle:
+            next(handle)
+            count = int(next(handle))
+            records = [next(handle) for _ in range(count)]
+        raw_ids = np.asarray([int(line[:5]) for line in records])
+        raw_names = [line[5:10].strip() for line in records]
+    except (OSError, ValueError, StopIteration) as exc:
+        raise WorkflowExecutionError(f"cannot read raw GRO residue identities: {topology}") from exc
+    if count != universe.atoms.n_atoms or not np.array_equal(raw_names, universe.atoms.resnames):
+        raise WorkflowExecutionError("raw GRO identities do not match the loaded topology atom order")
+    restored = []
+    for residue in universe.residues:
+        identifiers = np.unique(raw_ids[residue.atoms.indices])
+        if len(identifiers) != 1:
+            raise WorkflowExecutionError("one parsed residue contains multiple raw GRO identifiers")
+        restored.append(int(identifiers[0]))
+    universe.residues.resids = restored
+    universe.residues.resnums = restored
+
+
 def _write_aligned_protein(config: WorkflowConfig, run: RunInput, run_dir: Path) -> Path:
     mda, align = _load_mdanalysis()
     aligned_path = run_dir / "aligned_protein.pdb"
     universe = _universe_for_run(mda, run)
+    _apply_residue_numbering(universe, run.topology, config.preprocessing.residue_numbering)
     protein = universe.select_atoms(config.preprocessing.protein_selection)
     if not protein.n_atoms:
         raise WorkflowExecutionError(
@@ -112,6 +141,7 @@ def _write_aligned_protein(config: WorkflowConfig, run: RunInput, run_dir: Path)
         else:
             reference = _universe_for_run(mda, run)
             reference.trajectory[0]
+        _apply_residue_numbering(reference, run.topology, config.preprocessing.residue_numbering)
     elif config.preprocessing.alignment_mode == "use_supplied_fitted_trajectory":
         reference = None
     else:  # pragma: no cover - schema validation prevents this branch

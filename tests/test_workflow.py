@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -17,13 +18,19 @@ from mechanism.workflow.downstream import (
 )
 from mechanism.workflow.executor import (
     WorkflowExecutionError,
+    _apply_residue_numbering,
     _effective_reference_time_mode,
     _reference_center,
+    _write_aligned_protein,
     execute_workflow,
     resume_workflow,
 )
 from mechanism.workflow.provenance import build_manifest, sha256, write_manifest
-from mechanism.workflow.schema import WorkflowConfigError, load_workflow_config
+from mechanism.workflow.schema import (
+    RunInput,
+    WorkflowConfigError,
+    load_workflow_config,
+)
 from mechanism.workflow.summary import summarize_to_downstream_dataset
 from mechanism.workflow.validation import validate_workflow_config
 
@@ -202,6 +209,38 @@ def test_reference_time_modes_keep_the_historical_switch_explicit():
     assert _effective_reference_time_mode("dynamic", 0.0, 1.5) == "dynamic"
     assert _effective_reference_time_mode("auto_drift", 1.5, 1.5) == "fixed"
     assert _effective_reference_time_mode("auto_drift", 1.51, 1.5) == "dynamic"
+
+
+def test_raw_gro_numbering_restores_zero_crossing_without_moving_atoms(tmp_path):
+    import MDAnalysis as mda
+
+    gro = tmp_path / 'crossing.gro'
+    identities = [(-1, 'GLY'), (0, 'ALA'), (51, 'HIS'), (75, 'ASP'), (135, 'SER')]
+    lines = ['numbering regression\n', '5\n']
+    for index, (resid, name) in enumerate(identities, start=1):
+        lines.append(f'{resid:5d}{name:<5}{"CA":>5}{index:5d}{index*.1:8.3f}{.2:8.3f}{.3:8.3f}\n')
+    gro.write_text(''.join(lines) + '   2.0   2.0   2.0\n')
+    universe = mda.Universe(str(gro))
+    original_coordinates = universe.atoms.positions.copy()
+    assert int(universe.residues[-1].resid) == 100135
+    _apply_residue_numbering(universe, gro, 'parsed')
+    assert int(universe.residues[-1].resid) == 100135
+    _apply_residue_numbering(universe, gro, 'raw_gro')
+    assert universe.residues.resids.tolist() == [-1, 0, 51, 75, 135]
+    assert np.array_equal(universe.atoms.positions, original_coordinates)
+    assert universe.select_atoms('protein and resid 51 75 135').residues.resnames.tolist() == ['HIS', 'ASP', 'SER']
+
+    config = load_workflow_config(_write_execution_fixture(tmp_path))
+    config = replace(config, preprocessing=replace(
+        config.preprocessing, residue_numbering='raw_gro',
+        alignment_mode='use_supplied_fitted_trajectory',
+    ))
+    run_dir = tmp_path / 'numbering-output'
+    run_dir.mkdir()
+    path = _write_aligned_protein(config, RunInput('test', gro, (gro,)), run_dir)
+    exported = mda.Universe(str(path))
+    assert exported.residues.resids.tolist() == [-1, 0, 51, 75, 135]
+    assert np.allclose(exported.atoms.positions, original_coordinates, atol=.001)
 
 
 def test_historical_fitted_trajectory_mode_is_explicit(tmp_path):

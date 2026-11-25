@@ -146,6 +146,7 @@ def main() -> int:
             "  protein_selection: protein",
             "  alignment_selection: backbone",
             "  alignment_mode: use_supplied_fitted_trajectory",
+            "  residue_numbering: raw_gro",
             "  alignment_reference: topology",
             f"  frame_stride: {args.frame_stride}",
             f"  frame_interval_ps: {args.frame_interval_ps:g}",

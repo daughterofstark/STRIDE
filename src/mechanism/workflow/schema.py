@@ -26,6 +26,7 @@ class PreprocessingConfig:
     alignment_selection: str
     alignment_reference: str
     alignment_mode: str
+    residue_numbering: str
     frame_stride: int
     frame_interval_ps: float
 
@@ -261,6 +262,12 @@ def load_workflow_config(path: str | Path) -> WorkflowConfig:
         default="per_frame",
         choices={"per_frame", "use_supplied_fitted_trajectory"},
     )
+    residue_numbering = _choice(
+        prep, "residue_numbering", "preprocessing", default="parsed",
+        choices={"parsed", "raw_gro"},
+    )
+    if residue_numbering == "raw_gro" and any(run.topology.suffix.lower() != ".gro" for run in runs):
+        raise WorkflowConfigError("raw_gro residue numbering requires GRO topologies for every run")
 
     raw_pocket = _mapping(raw.get("pocket"), "pocket")
     method = _text(raw_pocket, "method", "pocket").lower()
@@ -366,6 +373,7 @@ def load_workflow_config(path: str | Path) -> WorkflowConfig:
             alignment_selection=_text(prep, "alignment_selection", "preprocessing"),
             alignment_reference=alignment_reference,
             alignment_mode=alignment_mode,
+            residue_numbering=residue_numbering,
             frame_stride=frame_stride,
             frame_interval_ps=frame_interval_ps,
         ),
