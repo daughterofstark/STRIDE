@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare an explicit DENV1 triplicate pilot from the archived v5 layout.
+"""Prepare an explicit dengue triplicate pilot from the archived v5 layout.
 
 This helper does not run POVME or STRIDE. It only verifies that the three
 historical correlation files agree on their file-to-canonical coordinate map,
@@ -37,6 +37,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--workflow-root", required=True, type=Path)
     parser.add_argument("--povme-executable", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--dataset", choices=("DENV1", "DENV2", "DENV3", "DENV4"), default="DENV1")
+    parser.add_argument("--hierarchy-config", type=Path)
+    parser.add_argument("--reference-residues", type=int, nargs=3, default=TRIAD_CANONICAL_IDS)
     parser.add_argument(
         "--frame-interval-ps",
         required=True,
@@ -57,6 +60,10 @@ def main() -> int:
     legacy_root = args.legacy_root.expanduser().resolve()
     workflow_root = args.workflow_root.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
+    dataset = args.dataset
+    reference_ids = tuple(args.reference_residues)
+    if len(set(reference_ids)) != 3 or min(reference_ids) < 1:
+        raise SystemExit("reference residues must be three distinct positive NS3 coordinates")
     if output_dir.exists():
         raise SystemExit(f"output directory already exists: {output_dir}")
     if args.frame_interval_ps <= 0 or args.frame_stride < 1:
@@ -64,7 +71,7 @@ def main() -> int:
 
     mappings: dict[str, list[tuple[int, int]]] = {}
     for run in RUNS:
-        path = legacy_root / run / "DENV1" / "analysis_output" / "DENV1_correlations_v5.csv"
+        path = legacy_root / run / dataset / "analysis_output" / f"{dataset}_correlations_v5.csv"
         if not path.is_file():
             raise SystemExit(f"missing archived mapping source: {path}")
         mappings[run] = _read_mapping(path)
@@ -77,14 +84,14 @@ def main() -> int:
         )
 
     canonical_to_file = {canonical: file_resid for file_resid, canonical in baseline}
-    missing_triad = [value for value in TRIAD_CANONICAL_IDS if value not in canonical_to_file]
+    missing_triad = [value for value in reference_ids if value not in canonical_to_file]
     if missing_triad:
         raise SystemExit(f"historical mapping has no canonical triad coordinates: {missing_triad}")
-    triad_file_ids = [canonical_to_file[value] for value in TRIAD_CANONICAL_IDS]
+    triad_file_ids = [canonical_to_file[value] for value in reference_ids]
 
     topology_trajectory: list[tuple[str, Path, Path]] = []
     for run in RUNS:
-        run_dir = legacy_root / run / "DENV1"
+        run_dir = legacy_root / run / dataset
         topology = run_dir / "33-md.gro"
         trajectory = run_dir / "36-md-fit.xtc"
         if not topology.is_file() or not trajectory.is_file():
@@ -93,12 +100,13 @@ def main() -> int:
     povme = args.povme_executable.expanduser().resolve()
     if not povme.is_file():
         raise SystemExit(f"POVME executable does not exist: {povme}")
-    hierarchy = workflow_root / "src" / "mechanism" / "configs" / "denv_hierarchy.yaml"
+    hierarchy = (args.hierarchy_config.expanduser().resolve() if args.hierarchy_config else
+                 workflow_root / "src" / "mechanism" / "configs" / "denv_hierarchy.yaml")
     if not hierarchy.is_file():
         raise SystemExit(f"could not find DENV hierarchy config: {hierarchy}")
 
     output_dir.mkdir(parents=True)
-    coordinate_map = output_dir / "DENV1_coordinate_map.csv"
+    coordinate_map = output_dir / f"{dataset}_coordinate_map.csv"
     with coordinate_map.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=("file_resid", "canon_resid", "chain", "label"))
         writer.writeheader()
@@ -114,12 +122,12 @@ def main() -> int:
             )
 
     selection_ids = " ".join(str(value) for value in triad_file_ids)
-    residue_labels = ", ".join(f'"NS3:{value}"' for value in TRIAD_CANONICAL_IDS)
+    residue_labels = ", ".join(f'"NS3:{value}"' for value in reference_ids)
     lines = [
         "workflow_version: 1",
         "",
         "project:",
-        "  system_id: DENV1_NS2B_NS3_triplicate_pilot",
+        f"  system_id: {dataset}_NS2B_NS3_triplicate_pilot",
         "",
         "runs:",
     ]
@@ -169,15 +177,15 @@ def main() -> int:
             "",
             f"hierarchy_config: {hierarchy}",
             "downstream_export:",
-            "  dataset_id: DENV1",
+            f"  dataset_id: {dataset}",
             f"  coordinate_map: {coordinate_map}",
             "",
         ]
     )
-    config = output_dir / "DENV1_stride.yaml"
+    config = output_dir / f"{dataset}_stride.yaml"
     config.write_text("\n".join(lines))
     print(f"verified {len(baseline)} identical coordinate mappings across {len(RUNS)} runs")
-    print(f"canonical triad {TRIAD_CANONICAL_IDS} maps to file residues {triad_file_ids}")
+    print(f"canonical reference {reference_ids} maps to file residues {triad_file_ids}")
     print(f"wrote {coordinate_map}")
     print(f"wrote {config}")
     print("next: stride validate --config " + str(config))

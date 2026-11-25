@@ -88,6 +88,15 @@ in [REAL_POVME_FIXTURE.md](REAL_POVME_FIXTURE.md).
 
 ## Historical DENV pilot
 
+The preparation helper now supports `--dataset DENV1|DENV2|DENV3|DENV4`.
+The default remains DENV1 for compatibility. `--reference-residues` accepts
+three explicit canonical NS3 coordinates; `--hierarchy-config` accepts an
+explicit hierarchy YAML. Each dataset is prepared and analyzed separately.
+The helper checks mapping agreement, not biological annotation validity or
+trajectory sampling metadata. Verify these choices before `stride run`.
+Other viruses are deliberately excluded until their mappings and groups have
+been reviewed. Do not copy the DENV hierarchy blindly to another system.
+
 `examples/dengue_pocket/prepare_legacy_denv1_pilot.py` prepares a new DENV1
 triplicate pilot from the archived v5 directory. It reads the three historical
 correlation CSVs only to verify and recover their existing file-to-canonical
